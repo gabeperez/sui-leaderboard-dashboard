@@ -1,4 +1,5 @@
 const DATA_SOURCE = './leaderboard.json';
+const SUI_RPC_URL = 'https://fullnode.mainnet.sui.io:443';
 
 const SAMPLE_DATA = {
   source: 'sample fallback',
@@ -26,6 +27,23 @@ const SAMPLE_DATA = {
   ]
 };
 
+const WELL_KNOWN_CONTRACTS = new Map([
+  ['0x2', 'Sui Framework'],
+  ['0xcaf6ba059d539a97646d47f0b9ddf843e138d215e2a12ca1f4585d386f7aec3a', 'Pool'],
+  ['0xe8e485e9339ec1d42ac92350fd3708ba823ad6e813af459fa32c68562e413cda', 'DBKE'],
+  ['0x73949528d57ccc07dad6d0eb996bae9ac66cb5c2189f08072104b060190add3d', 'Interface'],
+  ['0x5ea2c97771334e4a64216d42e5ba68eb2a9792fe874c8d2bfdf8feb32ec7dc8b', 'Lotus DB Vault'],
+  ['0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809', 'Pool'],
+  ['0x4979543452f609ff272d504755966ff5e70122256101c17adbe8bd27d35116c3', 'Price Data Pull v2'],
+  ['0xa6d0bd2e53216880182395e83f66ca581bb3ece53f154f54b2cc6b2403f66af7', 'Entrypoint'],
+  ['0x9f6de0f9c1333cecfafed4fd51ecf445d237a6295bd6ae88754821c8f8189789', 'Campaign'],
+  ['0x203728f46eb10d19f8f8081db849c86aa8f2a19341b7fd84d7a0e74f053f6242', 'Oracle Pro'],
+  ['0x5209a18e1ae6ac994dd5a188a2d8deb17b2bbab29f63a7b5457bdfe040f69f61', 'Alpha Lending']
+]);
+
+const rpcCache = new Map();
+const nameCache = new Map();
+
 const $ = (selector) => document.querySelector(selector);
 
 function formatNumber(value) {
@@ -51,6 +69,158 @@ function normalizeData(raw) {
     checkpoints: payload.checkpoints || payload.recentCheckpoints || [],
     topContracts: payload.topContracts || payload.contracts || [],
     activeWallets: payload.activeWallets || payload.wallets || []
+  };
+}
+
+function isHexAddress(value) {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
+}
+
+function normalizeAddress(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function shortAddress(value) {
+  if (!value) return '—';
+  const address = String(value);
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 8)}…${address.slice(-4)}`;
+}
+
+function humanizeName(value) {
+  if (!value) return '';
+  return String(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+function splitContractLabel(label) {
+  const text = String(label ?? '');
+  const parts = text.split('::');
+  if (parts.length >= 2 && isHexAddress(parts[0])) {
+    return {
+      address: normalizeAddress(parts[0]),
+      module: parts.slice(1).join('::')
+    };
+  }
+  return {
+    address: null,
+    module: text
+  };
+}
+
+async function rpcCall(method, params) {
+  const cacheKey = `${method}:${JSON.stringify(params)}`;
+  if (rpcCache.has(cacheKey)) {
+    return rpcCache.get(cacheKey);
+  }
+
+  const request = fetch(SUI_RPC_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'sui-dashboard',
+      method,
+      params
+    })
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`${method} (${response.status})`);
+      }
+      const json = await response.json();
+      if (json.error) {
+        throw new Error(json.error.message || `${method} failed`);
+      }
+      return json.result;
+    })
+    .catch((error) => {
+      rpcCache.delete(cacheKey);
+      throw error;
+    });
+
+  rpcCache.set(cacheKey, request);
+  return request;
+}
+
+async function lookupSuinsNames(address) {
+  const normalized = normalizeAddress(address);
+  if (!normalized) return [];
+  if (nameCache.has(normalized)) {
+    return nameCache.get(normalized);
+  }
+
+  const promise = rpcCall('suix_resolveNameServiceNames', [normalized])
+    .then((result) => {
+      const names = Array.isArray(result?.data)
+        ? result.data
+        : Array.isArray(result)
+          ? result
+          : [];
+      return names.filter(Boolean).map(String);
+    })
+    .catch(() => []);
+
+  nameCache.set(normalized, promise);
+  return promise;
+}
+
+async function resolveWalletLabel(address) {
+  const normalized = normalizeAddress(address);
+  if (!normalized) return 'Unknown wallet';
+
+  const suinsNames = await lookupSuinsNames(normalized);
+  if (suinsNames.length > 0) {
+    return suinsNames[0];
+  }
+
+  return shortAddress(normalized);
+}
+
+async function resolveContractLabel(item) {
+  const rawLabel = item.label ?? item.contract ?? item.name ?? '';
+  const packageId = normalizeAddress(item.packageId || item.address || splitContractLabel(rawLabel).address);
+  const parsed = splitContractLabel(rawLabel);
+  const moduleName = humanizeName(item.module || parsed.module.replace(/^.*::/, ''));
+
+  if (!packageId) {
+    return rawLabel || 'Unknown contract';
+  }
+
+  const known = WELL_KNOWN_CONTRACTS.get(packageId);
+  if (known) {
+    return moduleName && known.toLowerCase() !== moduleName.toLowerCase() ? `${known} · ${moduleName}` : known;
+  }
+
+  const suinsNames = await lookupSuinsNames(packageId);
+  const resolvedName = suinsNames[0];
+  if (resolvedName) {
+    return moduleName && resolvedName.toLowerCase() !== moduleName.toLowerCase() ? `${resolvedName} · ${moduleName}` : resolvedName;
+  }
+
+  const fallback = shortAddress(packageId);
+  return moduleName ? `${fallback} · ${moduleName}` : fallback;
+}
+
+async function enrichData(data) {
+  const [topContracts, activeWallets] = await Promise.all([
+    Promise.all((data.topContracts || []).map(async (item) => ({
+      ...item,
+      displayLabel: await resolveContractLabel(item)
+    }))),
+    Promise.all((data.activeWallets || []).map(async (item) => ({
+      ...item,
+      displayLabel: await resolveWalletLabel(item.label ?? item.wallet ?? item.address ?? item.owner)
+    })))
+  ]);
+
+  return {
+    ...data,
+    topContracts,
+    activeWallets
   };
 }
 
@@ -160,7 +330,7 @@ function renderContracts(topContracts) {
     .map((item) => `
       <div class="contract-row">
         <div>
-          <div class="row-title">${item.label ?? item.contract ?? item.name ?? 'Unknown contract'}</div>
+          <div class="row-title">${item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract'}</div>
           <div class="row-subtitle">Top-ranked by jun activity</div>
         </div>
         <div>
@@ -187,7 +357,7 @@ function renderWallets(activeWallets) {
     .map((item) => `
       <div class="wallet-row">
         <div>
-          <div class="row-title">${item.label ?? item.wallet ?? item.address ?? 'Unknown wallet'}</div>
+          <div class="row-title">${item.displayLabel ?? item.label ?? item.wallet ?? item.address ?? 'Unknown wallet'}</div>
           <div class="row-subtitle">Active in the latest checkpoint window</div>
         </div>
         <div>
@@ -230,13 +400,14 @@ function updateSummary(data) {
 async function main() {
   renderLoading();
   const data = await loadData();
-  updateSummary(data);
-  renderCheckpoints(data.checkpoints || []);
-  renderContracts(data.topContracts || []);
-  renderWallets(data.activeWallets || []);
+  const enrichedData = await enrichData(data);
+  updateSummary(enrichedData);
+  renderCheckpoints(enrichedData.checkpoints || []);
+  renderContracts(enrichedData.topContracts || []);
+  renderWallets(enrichedData.activeWallets || []);
 
-  if (data.errors?.length) {
-    $('#sourceLabel').textContent = `${data.source || 'sample fallback'} / offline`;
+  if (enrichedData.errors?.length) {
+    $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
   }
 }
 
