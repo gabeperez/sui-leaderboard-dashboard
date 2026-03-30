@@ -1,4 +1,4 @@
-const DATA_SOURCES = ['./leaderboard.json', './data/leaderboard.json'];
+const DATA_SOURCE = './leaderboard.json';
 
 const SAMPLE_DATA = {
   source: 'sample fallback',
@@ -57,18 +57,16 @@ function normalizeData(raw) {
 async function loadData() {
   const errors = [];
 
-  for (const url of DATA_SOURCES) {
-    try {
-      const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) {
-        errors.push(`${url} (${response.status})`);
-        continue;
-      }
+  try {
+    const response = await fetch(DATA_SOURCE, { cache: 'no-store' });
+    if (!response.ok) {
+      errors.push(`${DATA_SOURCE} (${response.status})`);
+    } else {
       const json = await response.json();
       return normalizeData(json);
-    } catch (error) {
-      errors.push(`${url} (${error.message})`);
     }
+  } catch (error) {
+    errors.push(`${DATA_SOURCE} (${error.message})`);
   }
 
   return { ...SAMPLE_DATA, errors };
