@@ -1,0 +1,232 @@
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top, rgba(78, 140, 255, 0.22), transparent 34%),
+    linear-gradient(180deg, #07111f 0%, #081625 38%, #060b14 100%);
+  color: #e2e8f0;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(circle at center, black 38%, transparent 100%);
+}
+
+.dashboard-shell {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+}
+
+.status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #7dd3fc;
+  box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.12);
+}
+
+.mini-stat,
+.metric-card,
+.info-card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mini-stat {
+  padding: 0.9rem 1rem;
+}
+
+.mini-stat-label,
+.metric-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.92);
+}
+
+.mini-stat-value,
+.metric-value {
+  display: block;
+  margin-top: 0.4rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.mini-stat-value {
+  font-size: 0.96rem;
+}
+
+.metric-card {
+  padding: 1.2rem;
+}
+
+.metric-value {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.metric-note {
+  margin-top: 0.45rem;
+  font-size: 0.84rem;
+  color: rgba(203, 213, 225, 0.82);
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.section-subtitle {
+  margin-top: 0.25rem;
+  font-size: 0.87rem;
+  color: rgba(203, 213, 225, 0.78);
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.45rem 0.8rem;
+  font-size: 0.78rem;
+  color: #bfdbfe;
+}
+
+.checkpoint-head,
+.contract-head,
+.wallet-head {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.checkpoint-head,
+.contract-head,
+.wallet-head,
+.checkpoint-row,
+.contract-row,
+.wallet-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.contract-head,
+.contract-row,
+.wallet-head,
+.wallet-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.checkpoint-row,
+.contract-row,
+.wallet-row {
+  display: grid;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem 1rem;
+}
+
+.contract-row,
+.wallet-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.checkpoint-row:hover,
+.contract-row:hover,
+.wallet-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.row-title {
+  color: #fff;
+  font-weight: 500;
+}
+
+.row-subtitle,
+.row-meta {
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.row-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  background: rgba(96, 165, 250, 0.12);
+  color: #bfdbfe;
+  font-size: 0.8rem;
+}
+
+.info-card {
+  padding: 1rem 1.05rem;
+}
+
+.info-title {
+  margin-bottom: 0.35rem;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.info-card code {
+  border-radius: 0.45rem;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0.1rem 0.35rem;
+  color: #dbeafe;
+}
+
+.is-loading {
+  opacity: 0.7;
+}
+
+.pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .checkpoint-head,
+  .contract-head,
+  .wallet-head,
+  .checkpoint-row,
+  .contract-row,
+  .wallet-row {
+    grid-template-columns: 1fr;
+  }
+}
