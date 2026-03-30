@@ -1,5 +1,6 @@
 const DATA_SOURCE = './leaderboard.json';
 const SUI_RPC_URL = 'https://fullnode.mainnet.sui.io:443';
+const REFRESH_INTERVAL = 30;
 
 const SAMPLE_DATA = {
   source: 'sample fallback',
@@ -46,6 +47,15 @@ const nameCache = new Map();
 
 const $ = (selector) => document.querySelector(selector);
 
+/* ── Previous state for rank tracking ───────────────── */
+let previousContracts = [];
+let previousWallets = [];
+let refreshTimer = null;
+let countdown = REFRESH_INTERVAL;
+let isPageVisible = true;
+
+/* ── Utilities ──────────────────────────────────────── */
+
 function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(value ?? 0);
 }
@@ -71,6 +81,8 @@ function normalizeData(raw) {
     activeWallets: payload.activeWallets || payload.wallets || []
   };
 }
+
+/* ── Address resolution (from main) ─────────────────── */
 
 function isHexAddress(value) {
   return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
@@ -224,6 +236,180 @@ async function enrichData(data) {
   };
 }
 
+/* ── Copy to clipboard ──────────────────────────────── */
+
+const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>';
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Copied to clipboard');
+  }).catch(() => {
+    showToast('Copy failed');
+  });
+}
+
+/* ── Toast notifications ────────────────────────────── */
+
+function showToast(message) {
+  const container = $('#toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>${message}`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    toast.addEventListener('animationend', () => toast.remove());
+  }, 1800);
+}
+
+/* ── Count-up animation ─────────────────────────────── */
+
+function animateValue(element, targetText) {
+  const cleanTarget = targetText.replace(/[^0-9]/g, '');
+  const prefix = targetText.match(/^[^0-9]*/)?.[0] || '';
+  const suffix = targetText.match(/[^0-9]*$/)?.[0] || '';
+
+  if (!cleanTarget || isNaN(Number(cleanTarget))) {
+    element.textContent = targetText;
+    return;
+  }
+
+  const target = Number(cleanTarget);
+  const duration = 600;
+  const start = performance.now();
+  const startVal = 0;
+
+  function tick(now) {
+    const elapsed = now - start;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.round(startVal + (target - startVal) * eased);
+    element.textContent = prefix + formatNumber(current) + suffix;
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+}
+
+/* ── Sparkline renderer ─────────────────────────────── */
+
+function drawSparkline(canvasId, values, color = '#60a5fa') {
+  const canvas = $(`#${canvasId}`);
+  if (!canvas || !values.length) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  const padding = 2;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Fill gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0, color.replace(')', ', 0.25)').replace('rgb', 'rgba'));
+  gradient.addColorStop(1, 'transparent');
+
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
+    const y = h - padding - ((v - min) / range) * (h - padding * 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  // Close path for fill
+  ctx.lineTo(w - padding, h);
+  ctx.lineTo(padding, h);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Stroke line
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
+    const y = h - padding - ((v - min) / range) * (h - padding * 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // End dot
+  const lastX = w - padding;
+  const lastY = h - padding - ((values[values.length - 1] - min) / range) * (h - padding * 2);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+/* ── Rank change computation ────────────────────────── */
+
+function getRankChange(label, previousList) {
+  if (!previousList.length) return '';
+  const prevIndex = previousList.findIndex((p) => p === label);
+  if (prevIndex === -1) return '<span class="rank-change rank-new">NEW</span>';
+  return '';
+}
+
+function rankBadge(index) {
+  const rank = index + 1;
+  const cls = rank <= 3 ? ` rank-${rank}` : '';
+  return `<span class="rank-badge${cls}">${rank}</span>`;
+}
+
+/* ── Activity bar HTML ──────────────────────────────── */
+
+function activityBar(value, maxValue) {
+  const pct = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
+  return `
+    <div class="activity-bar-wrap">
+      <span class="row-title">${formatNumber(value)}</span>
+      <div class="activity-bar"><div class="activity-bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+/* ── Copy button HTML ───────────────────────────────── */
+
+function copyButton(text) {
+  const escaped = text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return `<button class="copy-btn" onclick="copyToClipboard('${escaped}')" title="Copy address">${COPY_ICON}</button>`;
+}
+
+/* ── Status dot management ──────────────────────────── */
+
+function setStatus(state) {
+  const dot = $('#statusDot');
+  const text = $('#statusText');
+  dot.classList.remove('is-live', 'is-stale', 'is-offline');
+
+  if (state === 'live') {
+    dot.classList.add('is-live');
+    text.textContent = 'jun-indexed Sui analytics — live';
+  } else if (state === 'stale') {
+    dot.classList.add('is-stale');
+    text.textContent = 'jun-indexed Sui analytics — stale';
+  } else {
+    dot.classList.add('is-offline');
+    text.textContent = 'jun-indexed Sui analytics — offline';
+  }
+}
+
+/* ── Data loading ───────────────────────────────────── */
+
 async function loadData() {
   const errors = [];
 
@@ -241,6 +427,8 @@ async function loadData() {
 
   return { ...SAMPLE_DATA, errors };
 }
+
+/* ── Loading skeleton ───────────────────────────────── */
 
 function renderLoading() {
   const checkpointList = $('#checkpointList');
@@ -288,6 +476,8 @@ function renderLoading() {
     .join('');
 }
 
+/* ── Render checkpoints ─────────────────────────────── */
+
 function renderCheckpoints(checkpoints) {
   const list = $('#checkpointList');
   if (!checkpoints.length) {
@@ -296,8 +486,8 @@ function renderCheckpoints(checkpoints) {
   }
 
   list.innerHTML = checkpoints
-    .map((item) => `
-      <div class="checkpoint-row">
+    .map((item, i) => `
+      <div class="checkpoint-row row-enter" style="animation-delay:${i * 50}ms">
         <div>
           <div class="row-title">#${formatNumber(item.checkpoint ?? item.height ?? item.id)}</div>
           <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : 'Recent checkpoint'}</div>
@@ -319,6 +509,8 @@ function renderCheckpoints(checkpoints) {
     .join('');
 }
 
+/* ── Render contracts ───────────────────────────────── */
+
 function renderContracts(topContracts) {
   const list = $('#contractList');
   if (!topContracts.length) {
@@ -326,25 +518,42 @@ function renderContracts(topContracts) {
     return;
   }
 
+  const maxActivity = Math.max(...topContracts.map((c) => c.activity ?? c.count ?? 0));
+  const prevLabels = previousContracts.map((c) => c.displayLabel ?? c.label ?? c.contract ?? c.name ?? '');
+
   list.innerHTML = topContracts
-    .map((item) => `
-      <div class="contract-row">
-        <div>
-          <div class="row-title">${item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract'}</div>
-          <div class="row-subtitle">Top-ranked by jun activity</div>
+    .map((item, i) => {
+      const label = item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract';
+      const activity = item.activity ?? item.count ?? 0;
+      const wallets = item.wallets ?? item.uniqueWallets ?? 0;
+      const change = getRankChange(label, prevLabels);
+
+      return `
+      <div class="contract-row row-enter" style="animation-delay:${i * 50}ms">
+        <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
+          ${rankBadge(i)}
+          <div style="min-width:0">
+            <div class="row-title" style="display:flex;align-items:center">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+              ${copyButton(label)}
+              ${change}
+            </div>
+            <div class="row-subtitle">Top-ranked by jun activity</div>
+          </div>
         </div>
+        <div>${activityBar(activity, maxActivity)}</div>
         <div>
-          <div class="row-title">${formatNumber(item.activity ?? item.count ?? 0)}</div>
-          <div class="row-subtitle">activity</div>
-        </div>
-        <div>
-          <div class="row-title">${formatNumber(item.wallets ?? item.uniqueWallets ?? 0)}</div>
+          <div class="row-title">${formatNumber(wallets)}</div>
           <div class="row-subtitle">wallets</div>
         </div>
-      </div>
-    `)
+      </div>`;
+    })
     .join('');
+
+  previousContracts = topContracts.map((c) => ({ ...c }));
 }
+
+/* ── Render wallets ─────────────────────────────────── */
 
 function renderWallets(activeWallets) {
   const list = $('#walletList');
@@ -353,26 +562,43 @@ function renderWallets(activeWallets) {
     return;
   }
 
+  const maxActions = Math.max(...activeWallets.map((w) => w.actions ?? w.count ?? 0));
+  const prevLabels = previousWallets.map((w) => w.displayLabel ?? w.label ?? w.wallet ?? w.address ?? '');
+
   list.innerHTML = activeWallets
-    .map((item) => `
-      <div class="wallet-row">
-        <div>
-          <div class="row-title">${item.displayLabel ?? item.label ?? item.wallet ?? item.address ?? 'Unknown wallet'}</div>
-          <div class="row-subtitle">Active in the latest checkpoint window</div>
+    .map((item, i) => {
+      const label = item.displayLabel ?? item.label ?? item.wallet ?? item.address ?? 'Unknown wallet';
+      const actions = item.actions ?? item.count ?? 0;
+      const lastSeen = item.lastSeen ?? item.updatedAt ?? 'recent';
+      const change = getRankChange(label, prevLabels);
+
+      return `
+      <div class="wallet-row row-enter" style="animation-delay:${i * 50}ms">
+        <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
+          ${rankBadge(i)}
+          <div style="min-width:0">
+            <div class="row-title" style="display:flex;align-items:center">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+              ${copyButton(label)}
+              ${change}
+            </div>
+            <div class="row-subtitle">Active in the latest checkpoint window</div>
+          </div>
         </div>
+        <div>${activityBar(actions, maxActions)}</div>
         <div>
-          <div class="row-title">${formatNumber(item.actions ?? item.count ?? 0)}</div>
-          <div class="row-subtitle">actions</div>
+          <span class="row-pill">${lastSeen}</span>
         </div>
-        <div>
-          <span class="row-pill">${item.lastSeen ?? item.updatedAt ?? 'recent'}</span>
-        </div>
-      </div>
-    `)
+      </div>`;
+    })
     .join('');
+
+  previousWallets = activeWallets.map((w) => ({ ...w }));
 }
 
-function updateSummary(data) {
+/* ── Update summary with count-up ───────────────────── */
+
+function updateSummary(data, animate = true) {
   const checkpoints = data.checkpoints || [];
   const contracts = data.topContracts || [];
   const wallets = data.activeWallets || [];
@@ -384,35 +610,121 @@ function updateSummary(data) {
   $('#contractMeta').textContent = `${formatNumber(contracts.length)} contracts`;
   $('#walletMeta').textContent = `${formatNumber(wallets.length)} wallets`;
 
-  $('#latestCheckpoint').textContent = latestCheckpoint
-    ? `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}`
-    : '—';
+  const latestEl = $('#latestCheckpoint');
+  const countEl = $('#checkpointCount');
+  const contractEl = $('#contractCount');
+  const walletEl = $('#walletCount');
+
+  if (animate) {
+    if (latestCheckpoint) {
+      animateValue(latestEl, `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}`);
+    } else {
+      latestEl.textContent = '—';
+    }
+    animateValue(countEl, formatNumber(checkpoints.length));
+    animateValue(contractEl, formatNumber(contracts.length));
+    animateValue(walletEl, formatNumber(wallets.length));
+  } else {
+    latestEl.textContent = latestCheckpoint
+      ? `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}`
+      : '—';
+    countEl.textContent = formatNumber(checkpoints.length);
+    contractEl.textContent = formatNumber(contracts.length);
+    walletEl.textContent = formatNumber(wallets.length);
+  }
 
   $('#latestCheckpointNote').textContent = latestCheckpoint
     ? `${formatNumber(latestCheckpoint.txCount ?? latestCheckpoint.transactions ?? 0)} transactions in the latest row`
     : 'Awaiting indexed export';
 
-  $('#checkpointCount').textContent = formatNumber(checkpoints.length);
-  $('#contractCount').textContent = formatNumber(contracts.length);
-  $('#walletCount').textContent = formatNumber(wallets.length);
+  // Draw sparklines from checkpoint data
+  const txValues = checkpoints.map((c) => c.txCount ?? c.transactions ?? 0).reverse();
+  const eventValues = checkpoints.map((c) => c.eventCount ?? c.events ?? 0).reverse();
+  const contractActivities = contracts.map((c) => c.activity ?? c.count ?? 0);
+  const walletActions = wallets.map((w) => w.actions ?? w.count ?? 0);
+
+  // Pad short arrays for better visuals
+  const pad = (arr, min) => arr.length >= min ? arr : [...Array(min - arr.length).fill(arr[0] ?? 0), ...arr];
+
+  drawSparkline('sparkCheckpoint', pad(checkpoints.map((c) => c.checkpoint ?? c.height ?? 0).reverse(), 6), '#7dd3fc');
+  drawSparkline('sparkTx', pad(txValues, 6), '#60a5fa');
+  drawSparkline('sparkContracts', pad(contractActivities, 6), '#a78bfa');
+  drawSparkline('sparkWallets', pad(walletActions, 6), '#34d399');
 }
 
-async function main() {
-  renderLoading();
+/* ── Auto-refresh ───────────────────────────────────── */
+
+function startRefreshTimer() {
+  countdown = REFRESH_INTERVAL;
+  updateCountdownDisplay();
+
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (!isPageVisible) return;
+    countdown--;
+    updateCountdownDisplay();
+    if (countdown <= 0) {
+      refresh();
+    }
+  }, 1000);
+}
+
+function updateCountdownDisplay() {
+  const el = $('#refreshCountdown');
+  if (el) el.textContent = `${countdown}s`;
+}
+
+async function refresh() {
+  countdown = REFRESH_INTERVAL;
+  updateCountdownDisplay();
+
   const data = await loadData();
   const enrichedData = await enrichData(data);
-  updateSummary(enrichedData);
+  updateSummary(enrichedData, true);
   renderCheckpoints(enrichedData.checkpoints || []);
   renderContracts(enrichedData.topContracts || []);
   renderWallets(enrichedData.activeWallets || []);
 
   if (enrichedData.errors?.length) {
+    setStatus('offline');
     $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
+  } else {
+    const age = Date.now() - new Date(enrichedData.updatedAt).getTime();
+    setStatus(age > 5 * 60 * 1000 ? 'stale' : 'live');
   }
+}
+
+/* ── Visibility change (pause when tab hidden) ──────── */
+
+document.addEventListener('visibilitychange', () => {
+  isPageVisible = !document.hidden;
+});
+
+/* ── Main ───────────────────────────────────────────── */
+
+async function main() {
+  renderLoading();
+  const data = await loadData();
+  const enrichedData = await enrichData(data);
+  updateSummary(enrichedData, true);
+  renderCheckpoints(enrichedData.checkpoints || []);
+  renderContracts(enrichedData.topContracts || []);
+  renderWallets(enrichedData.activeWallets || []);
+
+  if (enrichedData.errors?.length) {
+    setStatus('offline');
+    $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
+  } else {
+    const age = Date.now() - new Date(enrichedData.updatedAt).getTime();
+    setStatus(age > 5 * 60 * 1000 ? 'stale' : 'live');
+  }
+
+  startRefreshTimer();
 }
 
 main().catch((error) => {
   console.error(error);
+  setStatus('offline');
   $('#sourceLabel').textContent = 'render error';
   $('#updatedLabel').textContent = 'check console';
 });

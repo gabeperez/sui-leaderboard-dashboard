@@ -25,6 +25,8 @@ body::before {
   mask-image: radial-gradient(circle at center, black 38%, transparent 100%);
 }
 
+/* ── Dashboard shell ────────────────────────────────── */
+
 .dashboard-shell {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -34,13 +36,62 @@ body::before {
   backdrop-filter: blur(14px);
 }
 
+/* ── Status dot with live/stale/offline states ──────── */
+
 .status-dot {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
   background: #7dd3fc;
   box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.12);
+  transition: background 0.4s, box-shadow 0.4s;
 }
+
+.status-dot.is-live {
+  background: #4ade80;
+  box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.15);
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.status-dot.is-stale {
+  background: #fbbf24;
+  box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.15);
+  animation: status-pulse 3s ease-in-out infinite;
+}
+
+.status-dot.is-offline {
+  background: #f87171;
+  box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.15);
+  animation: none;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Refresh badge ──────────────────────────────────── */
+
+.refresh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.7rem;
+  color: rgba(148, 163, 184, 0.9);
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* ── Mini stats & metric cards ──────────────────────── */
 
 .mini-stat,
 .metric-card,
@@ -77,11 +128,14 @@ body::before {
 
 .metric-card {
   padding: 1.2rem;
+  position: relative;
+  overflow: hidden;
 }
 
 .metric-value {
   font-size: 2rem;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .metric-note {
@@ -89,6 +143,18 @@ body::before {
   font-size: 0.84rem;
   color: rgba(203, 213, 225, 0.82);
 }
+
+/* ── Sparkline canvas ───────────────────────────────── */
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 0.6rem;
+  opacity: 0.85;
+}
+
+/* ── Section heads ──────────────────────────────────── */
 
 .section-head {
   display: flex;
@@ -122,6 +188,8 @@ body::before {
   color: #bfdbfe;
 }
 
+/* ── Table grids ────────────────────────────────────── */
+
 .checkpoint-head,
 .contract-head,
 .wallet-head {
@@ -152,6 +220,7 @@ body::before {
   gap: 0.75rem;
   align-items: center;
   padding: 1rem 1rem;
+  transition: background 0.2s;
 }
 
 .contract-row,
@@ -164,6 +233,8 @@ body::before {
 .wallet-row:hover {
   background: rgba(255, 255, 255, 0.03);
 }
+
+/* ── Row content ────────────────────────────────────── */
 
 .row-title {
   color: #fff;
@@ -189,6 +260,175 @@ body::before {
   font-size: 0.8rem;
 }
 
+/* ── Rank badges ────────────────────────────────────── */
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: rgba(203, 213, 225, 0.7);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rank-badge.rank-1 {
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(250, 204, 21, 0.08));
+  border-color: rgba(250, 204, 21, 0.3);
+  color: #fde047;
+}
+
+.rank-badge.rank-2 {
+  background: linear-gradient(135deg, rgba(192, 192, 210, 0.2), rgba(192, 192, 210, 0.08));
+  border-color: rgba(192, 192, 210, 0.3);
+  color: #d1d5db;
+}
+
+.rank-badge.rank-3 {
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.2), rgba(205, 127, 50, 0.08));
+  border-color: rgba(205, 127, 50, 0.3);
+  color: #f59e0b;
+}
+
+/* ── Rank change indicators ─────────────────────────── */
+
+.rank-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.rank-change.rank-up {
+  color: #4ade80;
+}
+
+.rank-change.rank-down {
+  color: #f87171;
+}
+
+.rank-change.rank-new {
+  color: #7dd3fc;
+}
+
+/* ── Activity bars ──────────────────────────────────── */
+
+.activity-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.activity-bar {
+  flex: 1;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  max-width: 5rem;
+}
+
+.activity-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #7dd3fc);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Copy button ────────────────────────────────────── */
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border: none;
+  background: transparent;
+  color: rgba(148, 163, 184, 0.5);
+  cursor: pointer;
+  border-radius: 0.3rem;
+  padding: 0;
+  margin-left: 0.35rem;
+  transition: color 0.2s, background 0.2s;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover {
+  color: #bfdbfe;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.copy-btn svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* ── Toast notifications ────────────────────────────── */
+
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  animation: toast-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.toast.toast-out {
+  animation: toast-out 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(0.5rem) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(0.5rem) scale(0.95); }
+}
+
+/* ── Row enter animation ────────────────────────────── */
+
+.row-enter {
+  animation: row-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes row-slide-in {
+  from { opacity: 0; transform: translateY(0.4rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Info cards ─────────────────────────────────────── */
+
 .info-card {
   padding: 1rem 1.05rem;
 }
@@ -207,6 +447,8 @@ body::before {
   color: #dbeafe;
 }
 
+/* ── Loading states ─────────────────────────────────── */
+
 .is-loading {
   opacity: 0.7;
 }
@@ -220,6 +462,8 @@ body::before {
   50% { opacity: 1; }
 }
 
+/* ── Responsive ─────────────────────────────────────── */
+
 @media (max-width: 640px) {
   .checkpoint-head,
   .contract-head,
@@ -228,5 +472,9 @@ body::before {
   .contract-row,
   .wallet-row {
     grid-template-columns: 1fr;
+  }
+
+  .activity-bar {
+    max-width: 100%;
   }
 }
