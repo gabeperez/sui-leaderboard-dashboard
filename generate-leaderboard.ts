@@ -1,23 +1,22 @@
 /**
  * generate-leaderboard.ts
  *
- * Reads a jun-produced SQLite database and writes leaderboard.json
- * in the format expected by the dashboard.
+ * Reads a jun-produced SQLite database and writes leaderboard.json.
+ * Makes one server-side RPC call for network stats (no browser RPC needed).
  *
  * Usage:
  *   bun generate-leaderboard.ts <path-to-jun.sqlite> [output.json]
  *
- * If no output path is given, writes to ./leaderboard.json.
- *
- * Jun must be run with --include events to populate the events table:
+ * Jun must be run with --include events:
  *   jun stream --output live.sqlite --include events
  */
 
 import { Database } from "bun:sqlite";
 import { writeFileSync } from "fs";
 
-const CHECKPOINT_WINDOW = 20; // how many recent checkpoints to summarise
-const TOP_N = 10; // contracts and wallets to show
+const SUI_RPC = "https://fullnode.mainnet.sui.io:443";
+const CHECKPOINT_WINDOW = 20;
+const TOP_N = 10;
 
 const dbPath = process.argv[2];
 const outPath = process.argv[3] ?? "./leaderboard.json";
@@ -28,8 +27,6 @@ if (!dbPath) {
 }
 
 const db = new Database(dbPath, { readonly: true });
-
-/* ── Helpers ─────────────────────────────────────────── */
 
 function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
   return db.query(sql).all(...params) as T[];
@@ -62,7 +59,6 @@ type CheckpointRow = {
   timestamp: string;
 };
 
-// Transactions table has per-checkpoint timestamp — grab MIN (all same within a checkpoint)
 const checkpointRows = query<CheckpointRow>(`
   SELECT
     t.checkpoint,
@@ -77,9 +73,8 @@ const checkpointRows = query<CheckpointRow>(`
   LIMIT ?
 `, [windowStart, CHECKPOINT_WINDOW]);
 
-// Compute finality as the gap between consecutive checkpoint timestamps (ms → s)
 const checkpoints = checkpointRows.map((row, i) => {
-  const next = checkpointRows[i + 1]; // older checkpoint
+  const next = checkpointRows[i + 1];
   let finalitySeconds: number | null = null;
   if (next) {
     const diffMs =
@@ -103,8 +98,6 @@ type ContractRow = {
   wallets: number;
 };
 
-// Uses the events table: package_id + module identify the contract
-// Falls back gracefully if the events table is empty (--include events not set)
 const topContracts = query<ContractRow>(`
   SELECT
     e.package_id || '::' || e.module AS label,
@@ -128,7 +121,6 @@ type WalletRow = {
   lastSeen: string;
 };
 
-// Uses the transactions table: sender = wallet address
 const activeWallets = query<WalletRow>(`
   SELECT
     sender          AS label,
@@ -144,25 +136,76 @@ const activeWallets = query<WalletRow>(`
   LIMIT ?
 `, [windowStart, TOP_N]);
 
+/* ── TPS from SQLite ─────────────────────────────────── */
+
+let tps: number | null = null;
+if (checkpoints.length >= 2) {
+  const newest = checkpoints[0];
+  const oldest = checkpoints[checkpoints.length - 1];
+  const totalTx = checkpoints.reduce((sum, cp) => sum + cp.txCount, 0);
+  const spanMs =
+    new Date(newest.timestamp).getTime() - new Date(oldest.timestamp).getTime();
+  if (spanMs > 0) tps = parseFloat((totalTx / (spanMs / 1000)).toFixed(1));
+}
+
+/* ── Network stats (one server-side RPC call) ────────── */
+
+type NetworkStats = {
+  epoch: number | null;
+  validatorCount: number;
+  tps: number | null;
+};
+
+async function fetchNetworkStats(): Promise<NetworkStats> {
+  try {
+    const res = await fetch(SUI_RPC, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "system-state",
+        method: "suix_getLatestSuiSystemState",
+        params: [],
+      }),
+    });
+    const json = (await res.json()) as { result?: { epoch?: string; activeValidators?: unknown[] } };
+    const state = json.result;
+    if (!state) return { epoch: null, validatorCount: 0, tps };
+    return {
+      epoch: state.epoch != null ? parseInt(state.epoch) : null,
+      validatorCount: state.activeValidators?.length ?? 0,
+      tps,
+    };
+  } catch (e) {
+    console.warn("Network stats RPC failed:", (e as Error).message);
+    return { epoch: null, validatorCount: 0, tps };
+  }
+}
+
+const networkStats = await fetchNetworkStats();
+
 /* ── Assemble & write ────────────────────────────────── */
 
 const output = {
-  source: "jun live sqlite snapshot",
+  source: "jun sqlite snapshot",
   updatedAt: new Date().toISOString(),
   window: `${checkpoints.length} checkpoints`,
   checkpointRange: { latestCheckpoint },
+  networkStats,
   checkpoints,
   topContracts,
   activeWallets,
 };
 
-const json = JSON.stringify(output, null, 2);
-writeFileSync(outPath, json, "utf-8");
+writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
 console.log(`Wrote ${outPath}`);
 console.log(`  Latest checkpoint : ${latestCheckpoint}`);
 console.log(`  Window            : ${checkpoints.length} checkpoints`);
 console.log(`  Top contracts     : ${topContracts.length}`);
 console.log(`  Active wallets    : ${activeWallets.length}`);
+console.log(`  Epoch             : ${networkStats.epoch ?? "unavailable"}`);
+console.log(`  Validators        : ${networkStats.validatorCount}`);
+console.log(`  TPS               : ${networkStats.tps ?? "unavailable"}`);
 
 db.close();

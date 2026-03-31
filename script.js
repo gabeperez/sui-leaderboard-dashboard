@@ -1,33 +1,16 @@
 const DATA_SOURCE = './leaderboard.json';
-const SUI_RPC_URL = 'https://fullnode.mainnet.sui.io:443';
 const SUISCAN_BASE = 'https://suiscan.xyz/mainnet';
 const REFRESH_INTERVAL = 30;
-const ZERO_ADDRESS = '0x' + '0'.repeat(64);
 
+// Only used if leaderboard.json is missing entirely
 const SAMPLE_DATA = {
-  source: 'sample fallback',
-  updatedAt: '2026-03-30T07:00:00.000Z',
-  window: '24h',
-  checkpoints: [
-    { checkpoint: 318104220, txCount: 1528, eventCount: 431, finalitySeconds: 0.82 },
-    { checkpoint: 318104219, txCount: 1487, eventCount: 409, finalitySeconds: 0.81 },
-    { checkpoint: 318104218, txCount: 1511, eventCount: 428, finalitySeconds: 0.84 },
-    { checkpoint: 318104217, txCount: 1432, eventCount: 392, finalitySeconds: 0.79 },
-    { checkpoint: 318104216, txCount: 1406, eventCount: 377, finalitySeconds: 0.80 }
-  ],
-  topContracts: [
-    { label: '0x2::sui_system::SuiSystem', activity: 1842, wallets: 431 },
-    { label: '0x3f4a...::bridge::Bridge', activity: 1468, wallets: 366 },
-    { label: '0x8c1d...::dex::Swap', activity: 1310, wallets: 311 },
-    { label: '0x77aa...::nft::Mint', activity: 988, wallets: 244 }
-  ],
-  activeWallets: [
-    { label: '0x8f21...caa1', actions: 96, lastSeen: '2m ago' },
-    { label: '0x13b0...f07c', actions: 84, lastSeen: '5m ago' },
-    { label: '0x5e88...90bf', actions: 73, lastSeen: '8m ago' },
-    { label: '0x74d1...1dd9', actions: 69, lastSeen: '11m ago' },
-    { label: '0x9a2c...43ab', actions: 61, lastSeen: '17m ago' }
-  ]
+  source: 'sample fallback — run generate-leaderboard.ts',
+  updatedAt: new Date(0).toISOString(),
+  window: '—',
+  networkStats: null,
+  checkpoints: [],
+  topContracts: [],
+  activeWallets: []
 };
 
 const WELL_KNOWN_CONTRACTS = new Map([
@@ -44,6 +27,7 @@ const WELL_KNOWN_CONTRACTS = new Map([
   ['0x5209a18e1ae6ac994dd5a188a2d8deb17b2bbab29f63a7b5457bdfe040f69f61', 'Alpha Lending']
 ]);
 
+// SUINS name resolution (only RPC call the browser makes — just for address labels)
 const rpcCache = new Map();
 const nameCache = new Map();
 
@@ -93,9 +77,10 @@ function timeAgo(value) {
 function normalizeData(raw) {
   const payload = raw?.data ?? raw ?? {};
   return {
-    source: payload.source || raw?.source || 'jun export',
-    updatedAt: payload.updatedAt || raw?.updatedAt || new Date().toISOString(),
-    window: payload.window || raw?.window || '24h',
+    source: payload.source || 'jun export',
+    updatedAt: payload.updatedAt || new Date().toISOString(),
+    window: payload.window || '—',
+    networkStats: payload.networkStats ?? null,
     checkpoints: payload.checkpoints || payload.recentCheckpoints || [],
     topContracts: payload.topContracts || payload.contracts || [],
     activeWallets: payload.activeWallets || payload.wallets || []
@@ -122,7 +107,7 @@ function extLink(url, label) {
   return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ext-link">${label}${EXT_ICON}</a>`;
 }
 
-/* ── Address resolution ─────────────────────────────── */
+/* ── Address resolution (SUINS — only browser RPC) ─── */
 
 function isHexAddress(value) {
   return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
@@ -163,42 +148,24 @@ function splitContractLabel(label) {
       module: parts.slice(1).join('::')
     };
   }
-  return {
-    address: null,
-    module: text
-  };
+  return { address: null, module: text };
 }
 
-async function rpcCall(method, params) {
+async function suinsRpcCall(method, params) {
   const cacheKey = `${method}:${JSON.stringify(params)}`;
-  if (rpcCache.has(cacheKey)) {
-    return rpcCache.get(cacheKey);
-  }
+  if (rpcCache.has(cacheKey)) return rpcCache.get(cacheKey);
 
-  const request = fetch(SUI_RPC_URL, {
+  const request = fetch('https://fullnode.mainnet.sui.io:443', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 'sui-dashboard',
-      method,
-      params
-    })
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'sui-dashboard', method, params })
   })
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error(`${method} (${response.status})`);
-      }
-      const json = await response.json();
-      if (json.error) {
-        throw new Error(json.error.message || `${method} failed`);
-      }
+    .then(async (r) => {
+      const json = await r.json();
+      if (json.error) throw new Error(json.error.message || `${method} failed`);
       return json.result;
     })
-    .catch((error) => {
-      rpcCache.delete(cacheKey);
-      throw error;
-    });
+    .catch((e) => { rpcCache.delete(cacheKey); throw e; });
 
   rpcCache.set(cacheKey, request);
   return request;
@@ -207,17 +174,11 @@ async function rpcCall(method, params) {
 async function lookupSuinsNames(address) {
   const normalized = normalizeAddress(address);
   if (!normalized) return [];
-  if (nameCache.has(normalized)) {
-    return nameCache.get(normalized);
-  }
+  if (nameCache.has(normalized)) return nameCache.get(normalized);
 
-  const promise = rpcCall('suix_resolveNameServiceNames', [normalized])
+  const promise = suinsRpcCall('suix_resolveNameServiceNames', [normalized])
     .then((result) => {
-      const names = Array.isArray(result?.data)
-        ? result.data
-        : Array.isArray(result)
-          ? result
-          : [];
+      const names = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
       return names.filter(Boolean).map(String);
     })
     .catch(() => []);
@@ -229,13 +190,8 @@ async function lookupSuinsNames(address) {
 async function resolveWalletLabel(address) {
   const normalized = normalizeAddress(address);
   if (!normalized) return 'Unknown wallet';
-
-  const suinsNames = await lookupSuinsNames(normalized);
-  if (suinsNames.length > 0) {
-    return suinsNames[0];
-  }
-
-  return shortAddress(normalized);
+  const names = await lookupSuinsNames(normalized);
+  return names[0] ?? shortAddress(normalized);
 }
 
 async function resolveContractLabel(item) {
@@ -244,19 +200,19 @@ async function resolveContractLabel(item) {
   const parsed = splitContractLabel(rawLabel);
   const moduleName = humanizeName(item.module || parsed.module.replace(/^.*::/, ''));
 
-  if (!packageId) {
-    return rawLabel || 'Unknown contract';
-  }
+  if (!packageId) return rawLabel || 'Unknown contract';
 
   const known = WELL_KNOWN_CONTRACTS.get(packageId);
   if (known) {
-    return moduleName && known.toLowerCase() !== moduleName.toLowerCase() ? `${known} · ${moduleName}` : known;
+    return moduleName && known.toLowerCase() !== moduleName.toLowerCase()
+      ? `${known} · ${moduleName}` : known;
   }
 
-  const suinsNames = await lookupSuinsNames(packageId);
-  const resolvedName = suinsNames[0];
+  const names = await lookupSuinsNames(packageId);
+  const resolvedName = names[0];
   if (resolvedName) {
-    return moduleName && resolvedName.toLowerCase() !== moduleName.toLowerCase() ? `${resolvedName} · ${moduleName}` : resolvedName;
+    return moduleName && resolvedName.toLowerCase() !== moduleName.toLowerCase()
+      ? `${resolvedName} · ${moduleName}` : resolvedName;
   }
 
   const fallback = shortAddress(packageId);
@@ -264,7 +220,6 @@ async function resolveContractLabel(item) {
 }
 
 async function enrichData(data) {
-  // Filter zero address wallets — not a real wallet
   const wallets = (data.activeWallets || []).filter(
     (w) => !isZeroAddress(w.label ?? w.wallet ?? w.address ?? w.owner ?? '')
   );
@@ -280,93 +235,7 @@ async function enrichData(data) {
     })))
   ]);
 
-  return {
-    ...data,
-    topContracts,
-    activeWallets
-  };
-}
-
-/* ── Live data from Sui RPC ─────────────────────────── */
-
-async function loadLiveCheckpoints() {
-  try {
-    const res = await fetch(SUI_RPC_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'live-checkpoints',
-        method: 'sui_getCheckpoints',
-        params: [null, 20, true]
-      })
-    });
-    const json = await res.json();
-    if (json.error || !json.result?.data?.length) return null;
-
-    const cps = json.result.data;
-    return cps.map((cp, i) => {
-      const prevCp = cps[i + 1];
-      const finalityMs = prevCp
-        ? parseInt(cp.timestampMs) - parseInt(prevCp.timestampMs)
-        : null;
-      return {
-        checkpoint: parseInt(cp.sequenceNumber),
-        txCount: parseInt(cp.numTransactionBlocks || '0'),
-        eventCount: 0,
-        finalitySeconds: finalityMs != null ? Math.max(0, finalityMs / 1000) : null,
-        timestamp: new Date(parseInt(cp.timestampMs)).toISOString(),
-        digest: cp.digest,
-        networkTotalTransactions: cp.networkTotalTransactions
-          ? parseInt(cp.networkTotalTransactions)
-          : null
-      };
-    });
-  } catch (e) {
-    console.warn('Live checkpoint fetch failed:', e.message);
-    return null;
-  }
-}
-
-async function loadNetworkStats(checkpoints) {
-  try {
-    const res = await fetch(SUI_RPC_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 'system-state',
-        method: 'suix_getLatestSuiSystemState',
-        params: []
-      })
-    });
-    const json = await res.json();
-    if (json.error || !json.result) return null;
-
-    const state = json.result;
-
-    let tps = null;
-    if (checkpoints && checkpoints.length >= 2) {
-      const newest = checkpoints[0];
-      const oldest = checkpoints[checkpoints.length - 1];
-      const totalTx = checkpoints.reduce((sum, cp) => sum + (cp.txCount || 0), 0);
-      const spanMs = new Date(newest.timestamp).getTime() - new Date(oldest.timestamp).getTime();
-      if (spanMs > 0) tps = (totalTx / (spanMs / 1000)).toFixed(1);
-    }
-
-    // Total transactions from latest checkpoint's networkTotalTransactions
-    const totalTransactions = checkpoints?.[0]?.networkTotalTransactions ?? null;
-
-    return {
-      epoch: parseInt(state.epoch),
-      validatorCount: state.activeValidators?.length ?? 0,
-      tps,
-      totalTransactions
-    };
-  } catch (e) {
-    console.warn('Network stats fetch failed:', e.message);
-    return null;
-  }
+  return { ...data, topContracts, activeWallets };
 }
 
 /* ── Copy to clipboard ──────────────────────────────── */
@@ -374,11 +243,9 @@ async function loadNetworkStats(checkpoints) {
 const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>';
 
 function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Copied to clipboard');
-  }).catch(() => {
-    showToast('Copy failed');
-  });
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('Copied to clipboard'))
+    .catch(() => showToast('Copy failed'));
 }
 
 /* ── Toast notifications ────────────────────────────── */
@@ -389,7 +256,6 @@ function showToast(message) {
   toast.className = 'toast';
   toast.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>${message}`;
   container.appendChild(toast);
-
   setTimeout(() => {
     toast.classList.add('toast-out');
     toast.addEventListener('animationend', () => toast.remove());
@@ -411,14 +277,12 @@ function animateValue(element, targetText) {
   const target = Number(cleanTarget);
   const duration = 600;
   const start = performance.now();
-  const startVal = 0;
 
   function tick(now) {
     const elapsed = now - start;
     const progress = Math.min(elapsed / duration, 1);
     const eased = 1 - Math.pow(1 - progress, 3);
-    const current = Math.round(startVal + (target - startVal) * eased);
-    element.textContent = prefix + formatNumber(current) + suffix;
+    element.textContent = prefix + formatNumber(Math.round(target * eased)) + suffix;
     if (progress < 1) requestAnimationFrame(tick);
   }
 
@@ -433,7 +297,6 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
 
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
-
   canvas.width = canvas.offsetWidth * dpr;
   canvas.height = canvas.offsetHeight * dpr;
   ctx.scale(dpr, dpr);
@@ -451,27 +314,23 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
   gradient.addColorStop(0, color.replace(')', ', 0.25)').replace('rgb', 'rgba'));
   gradient.addColorStop(1, 'transparent');
 
-  ctx.beginPath();
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
-    const y = h - padding - ((v - min) / range) * (h - padding * 2);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
+  const drawPath = () => {
+    ctx.beginPath();
+    values.forEach((v, i) => {
+      const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
+      const y = h - padding - ((v - min) / range) * (h - padding * 2);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+  };
 
+  drawPath();
   ctx.lineTo(w - padding, h);
   ctx.lineTo(padding, h);
   ctx.closePath();
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  ctx.beginPath();
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
-    const y = h - padding - ((v - min) / range) * (h - padding * 2);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
+  drawPath();
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
   ctx.lineJoin = 'round';
@@ -485,13 +344,12 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
   ctx.fill();
 }
 
-/* ── Rank change computation ────────────────────────── */
+/* ── Rank helpers ───────────────────────────────────── */
 
 function getRankChange(label, previousList) {
   if (!previousList.length) return '';
-  const prevIndex = previousList.findIndex((p) => p === label);
-  if (prevIndex === -1) return '<span class="rank-change rank-new">NEW</span>';
-  return '';
+  return previousList.findIndex((p) => p === label) === -1
+    ? '<span class="rank-change rank-new">NEW</span>' : '';
 }
 
 function rankBadge(index) {
@@ -500,7 +358,7 @@ function rankBadge(index) {
   return `<span class="rank-badge${cls}">${rank}</span>`;
 }
 
-/* ── Activity bar HTML ──────────────────────────────── */
+/* ── Activity bar ───────────────────────────────────── */
 
 function activityBar(value, maxValue) {
   const pct = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
@@ -511,29 +369,27 @@ function activityBar(value, maxValue) {
     </div>`;
 }
 
-/* ── Copy button HTML ───────────────────────────────── */
-
 function copyButton(text) {
   const escaped = text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
   return `<button class="copy-btn" onclick="copyToClipboard('${escaped}')" title="Copy address">${COPY_ICON}</button>`;
 }
 
-/* ── Status dot management ──────────────────────────── */
+/* ── Status dot ─────────────────────────────────────── */
 
-function setStatus(state) {
+function setStatus(ageMs) {
   const dot = $('#statusDot');
   const text = $('#statusText');
   dot.classList.remove('is-live', 'is-stale', 'is-offline');
 
-  if (state === 'live') {
+  if (ageMs < 5 * 60 * 1000) {
     dot.classList.add('is-live');
-    text.textContent = 'Sui mainnet — live';
-  } else if (state === 'stale') {
+    text.textContent = 'jun-indexed · live';
+  } else if (ageMs < 60 * 60 * 1000) {
     dot.classList.add('is-stale');
-    text.textContent = 'Sui mainnet — leaderboard data stale';
+    text.textContent = `jun-indexed · ${timeAgo(Date.now() - ageMs)}`;
   } else {
     dot.classList.add('is-offline');
-    text.textContent = 'Sui mainnet — RPC offline';
+    text.textContent = `jun-indexed · stale (${timeAgo(Date.now() - ageMs)})`;
   }
 }
 
@@ -543,9 +399,9 @@ function updateStaleBanner(updatedAt) {
   const banner = $('#staleBanner');
   if (!banner) return;
   const age = Date.now() - new Date(updatedAt).getTime();
-  const hours = Math.floor(age / 3600000);
   if (age > 3600000) {
-    banner.textContent = `Contract & wallet data is ${hours}h old — update leaderboard.json to refresh.`;
+    const h = Math.floor(age / 3600000);
+    banner.textContent = `Data is ${h}h old — re-run generate-leaderboard.ts and redeploy leaderboard.json to refresh.`;
     banner.hidden = false;
   } else {
     banner.hidden = true;
@@ -555,69 +411,39 @@ function updateStaleBanner(updatedAt) {
 /* ── Data loading ───────────────────────────────────── */
 
 async function loadData() {
-  const errors = [];
-
   try {
     const response = await fetch(DATA_SOURCE, { cache: 'no-store' });
-    if (!response.ok) {
-      errors.push(`${DATA_SOURCE} (${response.status})`);
-    } else {
-      const json = await response.json();
-      return normalizeData(json);
+    if (response.ok) {
+      return normalizeData(await response.json());
     }
-  } catch (error) {
-    errors.push(`${DATA_SOURCE} (${error.message})`);
-  }
-
-  return { ...SAMPLE_DATA, errors };
+  } catch (_) {}
+  return { ...SAMPLE_DATA, _isFallback: true };
 }
 
 /* ── Loading skeleton ───────────────────────────────── */
 
 function renderLoading() {
-  const checkpointList = $('#checkpointList');
-  const contractList = $('#contractList');
-  const walletList = $('#walletList');
+  $('#checkpointList').innerHTML = Array.from({ length: 5 }).map(() => `
+    <div class="checkpoint-row is-loading">
+      <div><div class="h-4 w-32 rounded bg-white/10 pulse"></div><div class="mt-2 h-3 w-20 rounded bg-white/5 pulse"></div></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+    </div>`).join('');
 
-  checkpointList.innerHTML = Array.from({ length: 5 })
-    .map(() => `
-      <div class="checkpoint-row is-loading">
-        <div>
-          <div class="h-4 w-32 rounded bg-white/10 pulse"></div>
-          <div class="mt-2 h-3 w-20 rounded bg-white/5 pulse"></div>
-        </div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-      </div>
-    `)
-    .join('');
+  $('#contractList').innerHTML = Array.from({ length: 4 }).map(() => `
+    <div class="contract-row is-loading">
+      <div><div class="h-4 w-48 rounded bg-white/10 pulse"></div><div class="mt-2 h-3 w-28 rounded bg-white/5 pulse"></div></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+    </div>`).join('');
 
-  contractList.innerHTML = Array.from({ length: 4 })
-    .map(() => `
-      <div class="contract-row is-loading">
-        <div>
-          <div class="h-4 w-48 rounded bg-white/10 pulse"></div>
-          <div class="mt-2 h-3 w-28 rounded bg-white/5 pulse"></div>
-        </div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-      </div>
-    `)
-    .join('');
-
-  walletList.innerHTML = Array.from({ length: 5 })
-    .map(() => `
-      <div class="wallet-row is-loading">
-        <div>
-          <div class="h-4 w-32 rounded bg-white/10 pulse"></div>
-          <div class="mt-2 h-3 w-24 rounded bg-white/5 pulse"></div>
-        </div>
-        <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
-        <div class="h-4 w-20 rounded bg-white/10 pulse"></div>
-      </div>
-    `)
-    .join('');
+  $('#walletList').innerHTML = Array.from({ length: 5 }).map(() => `
+    <div class="wallet-row is-loading">
+      <div><div class="h-4 w-32 rounded bg-white/10 pulse"></div><div class="mt-2 h-3 w-24 rounded bg-white/5 pulse"></div></div>
+      <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
+      <div class="h-4 w-20 rounded bg-white/10 pulse"></div>
+    </div>`).join('');
 }
 
 /* ── Render network stats ───────────────────────────── */
@@ -628,9 +454,9 @@ function renderNetworkStats(stats) {
 
   if (!stats) {
     container.innerHTML = `
-      <div class="net-stat-item">
-        <span class="net-stat-label">RPC</span>
-        <span class="net-stat-value" style="color:rgba(203,213,225,0.5)">unavailable</span>
+      <div class="net-stat-item" style="grid-column:span 2">
+        <span class="net-stat-label">Network stats</span>
+        <span class="net-stat-value" style="font-size:1rem;color:rgba(203,213,225,0.5)">Run generate-leaderboard.ts to populate</span>
       </div>`;
     return;
   }
@@ -649,54 +475,45 @@ function renderNetworkStats(stats) {
       <span class="net-stat-value">${stats.tps ?? '—'}</span>
     </div>
     <div class="net-stat-item">
-      <span class="net-stat-label">Total txs</span>
-      <span class="net-stat-value">${formatBig(stats.totalTransactions)}</span>
+      <span class="net-stat-label">Window</span>
+      <span class="net-stat-value" style="font-size:1rem">${stats.window ?? '20 checkpoints'}</span>
     </div>
   `;
 }
 
 /* ── Render checkpoints ─────────────────────────────── */
 
-function renderCheckpoints(checkpoints, isLive) {
+function renderCheckpoints(checkpoints) {
   const list = $('#checkpointList');
-  const badge = $('#checkpointSourceBadge');
-  if (badge) {
-    badge.textContent = isLive ? 'live from RPC' : 'from leaderboard.json';
-    badge.className = `section-badge ${isLive ? 'badge-live' : 'badge-stale'}`;
-  }
-
   if (!checkpoints.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No checkpoint rows found yet.</div>`;
+    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No checkpoint data — run generate-leaderboard.ts.</div>`;
     return;
   }
 
-  list.innerHTML = checkpoints
-    .map((item, i) => {
-      const seq = item.checkpoint ?? item.height ?? item.id;
-      const finality = item.finalitySeconds != null
-        ? `${Number(item.finalitySeconds).toFixed(2)}s`
-        : '—';
-      return `
-      <div class="checkpoint-row row-enter" style="animation-delay:${i * 50}ms">
-        <div>
-          <div class="row-title">${extLink(suiscanCheckpointUrl(seq), `#${formatNumber(seq)}`)}</div>
-          <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : 'Recent checkpoint'}</div>
-        </div>
-        <div>
-          <div class="row-title">${formatNumber(item.txCount ?? item.transactions ?? 0)}</div>
-          <div class="row-subtitle">transactions</div>
-        </div>
-        <div>
-          <div class="row-title">${formatNumber(item.eventCount ?? item.events ?? 0)}</div>
-          <div class="row-subtitle">events</div>
-        </div>
-        <div>
-          <div class="row-title">${finality}</div>
-          <div class="row-subtitle">finality</div>
-        </div>
-      </div>`;
-    })
-    .join('');
+  list.innerHTML = checkpoints.map((item, i) => {
+    const seq = item.checkpoint ?? item.height ?? item.id;
+    const finality = item.finalitySeconds != null
+      ? `${Number(item.finalitySeconds).toFixed(2)}s` : '—';
+    return `
+    <div class="checkpoint-row row-enter" style="animation-delay:${i * 50}ms">
+      <div>
+        <div class="row-title">${extLink(suiscanCheckpointUrl(seq), `#${formatNumber(seq)}`)}</div>
+        <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : 'Recent'}</div>
+      </div>
+      <div>
+        <div class="row-title">${formatNumber(item.txCount ?? item.transactions ?? 0)}</div>
+        <div class="row-subtitle">transactions</div>
+      </div>
+      <div>
+        <div class="row-title">${formatNumber(item.eventCount ?? item.events ?? 0)}</div>
+        <div class="row-subtitle">events</div>
+      </div>
+      <div>
+        <div class="row-title">${finality}</div>
+        <div class="row-subtitle">finality</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 /* ── Render contracts ───────────────────────────────── */
@@ -704,47 +521,43 @@ function renderCheckpoints(checkpoints, isLive) {
 function renderContracts(topContracts) {
   const list = $('#contractList');
   if (!topContracts.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No contract data found yet.</div>`;
+    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No contract data — run generate-leaderboard.ts.</div>`;
     return;
   }
 
   const maxActivity = Math.max(...topContracts.map((c) => c.activity ?? c.count ?? 0));
-  const prevLabels = previousContracts.map((c) => c.displayLabel ?? c.label ?? c.contract ?? c.name ?? '');
+  const prevLabels = previousContracts.map((c) => c.displayLabel ?? c.label ?? '');
 
-  list.innerHTML = topContracts
-    .map((item, i) => {
-      const label = item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract';
-      const activity = item.activity ?? item.count ?? 0;
-      const wallets = item.wallets ?? item.uniqueWallets ?? 0;
-      const change = getRankChange(label, prevLabels);
-      const rawLabel = item.label ?? item.contract ?? item.name ?? '';
-      const { address } = splitContractLabel(rawLabel);
-      const addressToCopy = address || rawLabel;
+  list.innerHTML = topContracts.map((item, i) => {
+    const label = item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract';
+    const activity = item.activity ?? item.count ?? 0;
+    const wallets = item.wallets ?? item.uniqueWallets ?? 0;
+    const change = getRankChange(label, prevLabels);
+    const { address } = splitContractLabel(item.label ?? item.contract ?? item.name ?? '');
+    const addressToCopy = address || label;
 
-      return `
-      <div class="contract-row row-enter" style="animation-delay:${i * 50}ms">
-        <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
-          ${rankBadge(i)}
-          <div style="min-width:0">
-            <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
-              ${address
-                ? extLink(suiscanObjectUrl(address), label)
-                : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`
-              }
-              ${copyButton(addressToCopy)}
-              ${change}
-            </div>
-            <div class="row-subtitle">${address ? shortAddress(address) : 'Unknown package'}</div>
+    return `
+    <div class="contract-row row-enter" style="animation-delay:${i * 50}ms">
+      <div style="display:flex;align-items:center;gap:0.6rem">
+        ${rankBadge(i)}
+        <div style="min-width:0">
+          <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
+            ${address
+              ? extLink(suiscanObjectUrl(address), label)
+              : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`}
+            ${copyButton(addressToCopy)}
+            ${change}
           </div>
+          <div class="row-subtitle">${address ? shortAddress(address) : 'Unknown package'}</div>
         </div>
-        <div>${activityBar(activity, maxActivity)}</div>
-        <div>
-          <div class="row-title">${formatNumber(wallets)}</div>
-          <div class="row-subtitle">wallets</div>
-        </div>
-      </div>`;
-    })
-    .join('');
+      </div>
+      <div>${activityBar(activity, maxActivity)}</div>
+      <div>
+        <div class="row-title">${formatNumber(wallets)}</div>
+        <div class="row-subtitle">wallets</div>
+      </div>
+    </div>`;
+  }).join('');
 
   previousContracts = topContracts.map((c) => ({ ...c }));
 }
@@ -754,50 +567,44 @@ function renderContracts(topContracts) {
 function renderWallets(activeWallets) {
   const list = $('#walletList');
   if (!activeWallets.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No wallet data found yet.</div>`;
+    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No wallet data — run generate-leaderboard.ts.</div>`;
     return;
   }
 
   const maxActions = Math.max(...activeWallets.map((w) => w.actions ?? w.count ?? 0));
-  const prevLabels = previousWallets.map((w) => w.displayLabel ?? w.label ?? w.wallet ?? w.address ?? '');
+  const prevLabels = previousWallets.map((w) => w.displayLabel ?? w.label ?? '');
 
-  list.innerHTML = activeWallets
-    .map((item, i) => {
-      const rawAddress = normalizeAddress(item.label ?? item.wallet ?? item.address ?? item.owner ?? '');
-      const label = item.displayLabel ?? shortAddress(rawAddress) ?? 'Unknown wallet';
-      const actions = item.actions ?? item.count ?? 0;
-      const lastSeenRaw = item.lastSeen ?? item.updatedAt ?? null;
-      const lastSeenText = lastSeenRaw ? timeAgo(lastSeenRaw) : 'recent';
-      const change = getRankChange(label, prevLabels);
+  list.innerHTML = activeWallets.map((item, i) => {
+    const rawAddress = normalizeAddress(item.label ?? item.wallet ?? item.address ?? item.owner ?? '');
+    const label = item.displayLabel ?? shortAddress(rawAddress) ?? 'Unknown wallet';
+    const actions = item.actions ?? item.count ?? 0;
+    const lastSeenText = timeAgo(item.lastSeen ?? item.updatedAt ?? null);
+    const change = getRankChange(label, prevLabels);
 
-      return `
-      <div class="wallet-row row-enter" style="animation-delay:${i * 50}ms">
-        <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
-          ${rankBadge(i)}
-          <div style="min-width:0">
-            <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
-              ${rawAddress
-                ? extLink(suiscanAccountUrl(rawAddress), label)
-                : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`
-              }
-              ${rawAddress ? copyButton(rawAddress) : ''}
-              ${change}
-            </div>
-            <div class="row-subtitle">${rawAddress ? shortAddress(rawAddress) : ''}</div>
+    return `
+    <div class="wallet-row row-enter" style="animation-delay:${i * 50}ms">
+      <div style="display:flex;align-items:center;gap:0.6rem">
+        ${rankBadge(i)}
+        <div style="min-width:0">
+          <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
+            ${rawAddress
+              ? extLink(suiscanAccountUrl(rawAddress), label)
+              : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`}
+            ${rawAddress ? copyButton(rawAddress) : ''}
+            ${change}
           </div>
+          <div class="row-subtitle">${rawAddress ? shortAddress(rawAddress) : ''}</div>
         </div>
-        <div>${activityBar(actions, maxActions)}</div>
-        <div>
-          <span class="row-pill">${lastSeenText}</span>
-        </div>
-      </div>`;
-    })
-    .join('');
+      </div>
+      <div>${activityBar(actions, maxActions)}</div>
+      <div><span class="row-pill">${lastSeenText}</span></div>
+    </div>`;
+  }).join('');
 
   previousWallets = activeWallets.map((w) => ({ ...w }));
 }
 
-/* ── Update summary with count-up ───────────────────── */
+/* ── Update summary ─────────────────────────────────── */
 
 function updateSummary(data, animate = true) {
   const checkpoints = data.checkpoints || [];
@@ -807,7 +614,7 @@ function updateSummary(data, animate = true) {
 
   $('#sourceLabel').textContent = data.source || 'jun export';
   $('#updatedLabel').textContent = formatTime(data.updatedAt);
-  $('#checkpointWindow').textContent = data.window ? `${data.window} window` : '24h window';
+  $('#checkpointWindow').textContent = data.window ? `${data.window}` : '—';
   $('#contractMeta').textContent = `${formatNumber(contracts.length)} contracts`;
   $('#walletMeta').textContent = `${formatNumber(wallets.length)} wallets`;
 
@@ -827,8 +634,7 @@ function updateSummary(data, animate = true) {
     animateValue(walletEl, formatNumber(wallets.length));
   } else {
     latestEl.textContent = latestCheckpoint
-      ? `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}`
-      : '—';
+      ? `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}` : '—';
     countEl.textContent = formatNumber(checkpoints.length);
     contractEl.textContent = formatNumber(contracts.length);
     walletEl.textContent = formatNumber(wallets.length);
@@ -836,12 +642,11 @@ function updateSummary(data, animate = true) {
 
   $('#latestCheckpointNote').textContent = latestCheckpoint
     ? `${formatNumber(latestCheckpoint.txCount ?? latestCheckpoint.transactions ?? 0)} txs in the latest checkpoint`
-    : 'Awaiting data';
+    : 'Run generate-leaderboard.ts to populate';
 
   const txValues = checkpoints.map((c) => c.txCount ?? c.transactions ?? 0).reverse();
   const contractActivities = contracts.map((c) => c.activity ?? c.count ?? 0);
   const walletActions = wallets.map((w) => w.actions ?? w.count ?? 0);
-
   const pad = (arr, min) => arr.length >= min ? arr : [...Array(min - arr.length).fill(arr[0] ?? 0), ...arr];
 
   drawSparkline('sparkCheckpoint', pad(checkpoints.map((c) => c.checkpoint ?? c.height ?? 0).reverse(), 6), '#7dd3fc');
@@ -855,15 +660,12 @@ function updateSummary(data, animate = true) {
 function startRefreshTimer() {
   countdown = REFRESH_INTERVAL;
   updateCountdownDisplay();
-
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {
     if (!isPageVisible) return;
     countdown--;
     updateCountdownDisplay();
-    if (countdown <= 0) {
-      refresh();
-    }
+    if (countdown <= 0) refresh();
   }, 1000);
 }
 
@@ -876,34 +678,19 @@ async function refresh() {
   countdown = REFRESH_INTERVAL;
   updateCountdownDisplay();
 
-  const [jsonData, liveCheckpoints] = await Promise.all([
-    loadData(),
-    loadLiveCheckpoints()
-  ]);
+  const data = await loadData();
+  const enriched = await enrichData(data);
 
-  const enrichedData = await enrichData(jsonData);
-  const checkpointsToShow = liveCheckpoints || enrichedData.checkpoints || [];
-  const networkStats = await loadNetworkStats(liveCheckpoints);
+  updateSummary(enriched, true);
+  renderCheckpoints(enriched.checkpoints || []);
+  renderContracts(enriched.topContracts || []);
+  renderWallets(enriched.activeWallets || []);
+  renderNetworkStats(enriched.networkStats ?? null);
+  updateStaleBanner(enriched.updatedAt);
 
-  // Use live checkpoints in the stream, JSON data for contracts/wallets
-  const displayData = { ...enrichedData, checkpoints: checkpointsToShow };
-  updateSummary(displayData, true);
-  renderCheckpoints(checkpointsToShow, !!liveCheckpoints);
-  renderContracts(enrichedData.topContracts || []);
-  renderWallets(enrichedData.activeWallets || []);
-  renderNetworkStats(networkStats);
-  updateStaleBanner(enrichedData.updatedAt);
-
-  if (enrichedData.errors?.length && !liveCheckpoints) {
-    setStatus('offline');
-    $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
-  } else {
-    const age = Date.now() - new Date(enrichedData.updatedAt).getTime();
-    setStatus(age > 5 * 60 * 1000 ? 'stale' : 'live');
-  }
+  const age = Date.now() - new Date(enriched.updatedAt).getTime();
+  setStatus(enriched._isFallback ? Infinity : age);
 }
-
-/* ── Visibility change (pause when tab hidden) ──────── */
 
 document.addEventListener('visibilitychange', () => {
   isPageVisible = !document.hidden;
@@ -914,37 +701,25 @@ document.addEventListener('visibilitychange', () => {
 async function main() {
   renderLoading();
 
-  const [jsonData, liveCheckpoints] = await Promise.all([
-    loadData(),
-    loadLiveCheckpoints()
-  ]);
+  const data = await loadData();
+  const enriched = await enrichData(data);
 
-  const enrichedData = await enrichData(jsonData);
-  const checkpointsToShow = liveCheckpoints || enrichedData.checkpoints || [];
-  const networkStats = await loadNetworkStats(liveCheckpoints);
+  updateSummary(enriched, true);
+  renderCheckpoints(enriched.checkpoints || []);
+  renderContracts(enriched.topContracts || []);
+  renderWallets(enriched.activeWallets || []);
+  renderNetworkStats(enriched.networkStats ?? null);
+  updateStaleBanner(enriched.updatedAt);
 
-  const displayData = { ...enrichedData, checkpoints: checkpointsToShow };
-  updateSummary(displayData, true);
-  renderCheckpoints(checkpointsToShow, !!liveCheckpoints);
-  renderContracts(enrichedData.topContracts || []);
-  renderWallets(enrichedData.activeWallets || []);
-  renderNetworkStats(networkStats);
-  updateStaleBanner(enrichedData.updatedAt);
-
-  if (enrichedData.errors?.length && !liveCheckpoints) {
-    setStatus('offline');
-    $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
-  } else {
-    const age = Date.now() - new Date(enrichedData.updatedAt).getTime();
-    setStatus(age > 5 * 60 * 1000 ? 'stale' : 'live');
-  }
+  const age = Date.now() - new Date(enriched.updatedAt).getTime();
+  setStatus(enriched._isFallback ? Infinity : age);
 
   startRefreshTimer();
 }
 
 main().catch((error) => {
   console.error(error);
-  setStatus('offline');
-  $('#sourceLabel').textContent = 'render error';
-  $('#updatedLabel').textContent = 'check console';
+  const dot = $('#statusDot');
+  dot?.classList.add('is-offline');
+  $('#sourceLabel').textContent = 'render error — check console';
 });
