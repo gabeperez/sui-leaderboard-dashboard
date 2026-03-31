@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Sui leaderboard dashboard built on indexed jun data." />
+  <meta name="description" content="Real-time Sui mainnet activity — finality, protocols, and power users indexed by jun." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23081625'/><circle cx='16' cy='16' r='9' fill='none' stroke='%237dd3fc' stroke-width='2.5'/><circle cx='16' cy='16' r='3' fill='%237dd3fc'/></svg>" />
-  <title>Sui Leaderboard Dashboard</title>
+  <title>Sui Leaderboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -13,16 +13,19 @@
   <div id="toast-container" class="toast-container"></div>
 
   <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+
+    <!-- Header -->
     <header class="dashboard-shell mb-6 p-5 sm:p-6">
       <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.22em] text-slate-300">
             <span class="status-dot" id="statusDot" aria-hidden="true"></span>
-            <span id="statusText">jun-indexed Sui analytics</span>
+            <span id="statusText">Sui mainnet · jun-indexed</span>
           </div>
-          <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Sui Leaderboard Dashboard</h1>
+          <h1 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Sui Leaderboard</h1>
           <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-            Checkpoints, contracts, and wallets — all powered by jun's indexed SQLite data.
+            Sub-second finality. Real protocols. Real users.
+            Every metric below is pulled from jun's indexed Sui mainnet data.
           </p>
         </div>
 
@@ -33,13 +36,13 @@
           </div>
           <div class="mini-stat">
             <span class="mini-stat-label">Updated</span>
-            <span class="mini-stat-value" id="updatedLabel">Waiting for data</span>
+            <span class="mini-stat-value" id="updatedLabel">—</span>
           </div>
           <div class="mini-stat">
             <span class="mini-stat-label">Network</span>
             <span class="mini-stat-value flex items-center gap-2">
               Sui mainnet
-              <span class="refresh-badge" id="refreshBadge" title="Auto-refresh countdown">
+              <span class="refresh-badge" title="Auto-refresh countdown">
                 <svg class="refresh-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 8a5.5 5.5 0 019.3-4M13.5 8a5.5 5.5 0 01-9.3 4"/><path d="M12 1v3.5h-3.5M4 15v-3.5h3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span id="refreshCountdown">30s</span>
               </span>
@@ -49,47 +52,54 @@
       </div>
     </header>
 
-    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Summary metrics">
-      <article class="metric-card">
-        <p class="metric-label">Latest checkpoint</p>
-        <p class="metric-value" id="latestCheckpoint">—</p>
-        <p class="metric-note" id="latestCheckpointNote">Awaiting indexed export</p>
-        <canvas class="sparkline" id="sparkCheckpoint" height="32"></canvas>
+    <!-- Hero metrics: the story in 4 numbers -->
+    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key metrics">
+
+      <article class="metric-card metric-card--highlight">
+        <p class="metric-label">Avg finality</p>
+        <p class="metric-value" id="metricFinality">—</p>
+        <p class="metric-note" id="metricFinalityNote">Sui's core advantage</p>
+        <canvas class="sparkline" id="sparkFinality" height="32"></canvas>
       </article>
+
       <article class="metric-card">
-        <p class="metric-label">Checkpoints shown</p>
-        <p class="metric-value" id="checkpointCount">—</p>
-        <p class="metric-note">Recent checkpoint window</p>
+        <p class="metric-label">Transactions</p>
+        <p class="metric-value" id="metricTx">—</p>
+        <p class="metric-note" id="metricTxNote">In the current window</p>
         <canvas class="sparkline" id="sparkTx" height="32"></canvas>
       </article>
+
       <article class="metric-card">
-        <p class="metric-label">Top contracts</p>
-        <p class="metric-value" id="contractCount">—</p>
-        <p class="metric-note">Most active packages and modules</p>
-        <canvas class="sparkline" id="sparkContracts" height="32"></canvas>
-      </article>
-      <article class="metric-card">
-        <p class="metric-label">Active wallets</p>
-        <p class="metric-value" id="walletCount">—</p>
-        <p class="metric-note">Unique wallets in the current window</p>
+        <p class="metric-label">Unique wallets</p>
+        <p class="metric-value" id="metricWallets">—</p>
+        <p class="metric-note" id="metricWalletsNote">Active senders</p>
         <canvas class="sparkline" id="sparkWallets" height="32"></canvas>
       </article>
+
+      <article class="metric-card">
+        <p class="metric-label">Active protocols</p>
+        <p class="metric-value" id="metricProtocols">—</p>
+        <p class="metric-note" id="metricProtocolsNote">Competing for activity</p>
+        <canvas class="sparkline" id="sparkProtocols" height="32"></canvas>
+      </article>
+
     </section>
 
-    <section class="mt-6 grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
+    <!-- Checkpoint stream + Network health -->
+    <section class="mt-6 grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
             <h2 class="section-title">Checkpoint stream</h2>
-            <p class="section-subtitle">Latest checkpoints from the jun SQLite snapshot.</p>
+            <p class="section-subtitle">Each row is one Sui checkpoint — watch the finality column.</p>
           </div>
           <span class="section-badge" id="checkpointWindow">—</span>
         </div>
-
         <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid checkpoint-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Checkpoint</span>
-            <span>Transactions</span>
+            <span>Txs</span>
             <span>Events</span>
             <span>Finality</span>
           </div>
@@ -101,41 +111,40 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">Network health</h2>
-            <p class="section-subtitle">Sui mainnet stats — fetched by generate-leaderboard.ts at export time.</p>
+            <p class="section-subtitle">Epoch, validators, and window stats from this export.</p>
           </div>
           <span class="section-badge badge-live">mainnet</span>
         </div>
-
-        <div id="networkStatsGrid" class="mt-5 net-stat-grid">
-          <div class="net-stat-item pulse-bg">
+        <div id="networkHealthGrid" class="mt-5 net-stat-grid">
+          <div class="net-stat-item pulse-bg" style="grid-column:span 2">
             <span class="net-stat-label">Loading…</span>
           </div>
         </div>
-
-        <div class="mt-5 space-y-3 text-sm text-slate-400">
-          <p class="text-xs leading-5">
-            Epoch and validator count come from a single <code class="code-chip">suix_getLatestSuiSystemState</code> call made by the export script — not the browser.
-            TPS is computed from jun's checkpoint data.
-          </p>
-        </div>
+        <p class="mt-5 text-xs leading-5 text-slate-400">
+          Epoch and validator count from <code class="code-chip">suix_getLatestSuiSystemState</code>
+          fetched at export time. Finality computed from jun checkpoint timestamps.
+        </p>
       </article>
+
     </section>
 
+    <!-- Stale data warning -->
     <div id="staleBanner" class="stale-banner mt-4" hidden></div>
 
+    <!-- Protocol activity + Power users -->
     <section class="mt-6 grid gap-6 xl:grid-cols-2">
+
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Top contracts</h2>
-            <p class="section-subtitle">Contracts ranked by activity in the current data window.</p>
+            <h2 class="section-title">Protocol activity</h2>
+            <p class="section-subtitle">Ranked by on-chain event count in the leaderboard window.</p>
           </div>
           <span class="section-badge" id="contractMeta">Loading…</span>
         </div>
-
         <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid contract-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span>Contract</span>
+            <span>Protocol</span>
             <span>Activity</span>
             <span>Wallets</span>
           </div>
@@ -146,12 +155,11 @@
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Active wallets</h2>
-            <p class="section-subtitle">Wallets most involved in the same checkpoint range.</p>
+            <h2 class="section-title">Power users</h2>
+            <p class="section-subtitle">Most active senders in the leaderboard window.</p>
           </div>
           <span class="section-badge" id="walletMeta">Loading…</span>
         </div>
-
         <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid wallet-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Wallet</span>
@@ -161,12 +169,14 @@
           <div id="walletList" class="divide-y divide-white/8"></div>
         </div>
       </article>
+
     </section>
 
     <footer class="mt-6 flex flex-col gap-2 border-t border-white/10 pt-4 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-      <p>Checkpoint stream live from Sui mainnet RPC · contracts &amp; wallets from jun-indexed export.</p>
+      <p>Powered by <a href="https://github.com/unconfirmedlabs/jun" target="_blank" rel="noopener noreferrer" class="ext-link">jun</a> · Sui mainnet indexer</p>
       <p><a href="https://suiscan.xyz" target="_blank" rel="noopener noreferrer" class="ext-link">SuiScan</a></p>
     </footer>
+
   </main>
 
   <script src="./script.js"></script>

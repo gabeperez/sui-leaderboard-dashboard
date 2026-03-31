@@ -2,7 +2,6 @@
  * generate-leaderboard.ts
  *
  * Reads a jun-produced SQLite database and writes leaderboard.json.
- * Makes one server-side RPC call for network stats (no browser RPC needed).
  *
  * Usage:
  *   bun generate-leaderboard.ts <path-to-jun.sqlite> [output.json]
@@ -15,7 +14,14 @@ import { Database } from "bun:sqlite";
 import { writeFileSync } from "fs";
 
 const SUI_RPC = "https://fullnode.mainnet.sui.io:443";
-const CHECKPOINT_WINDOW = 20;
+
+// Checkpoints shown in the live stream panel (latest N)
+const STREAM_WINDOW = 20;
+
+// Checkpoints used for leaderboard rankings (contracts, wallets)
+// ~1000 checkpoints ≈ 4–5 minutes on Sui mainnet
+const LEADERBOARD_WINDOW = 1000;
+
 const TOP_N = 10;
 
 const dbPath = process.argv[2];
@@ -38,8 +44,8 @@ function queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = 
 
 /* ── Latest checkpoint ───────────────────────────────── */
 
-const latest = queryOne<{ latest: number }>(
-  `SELECT MAX(checkpoint) as latest FROM transactions`
+const latest = queryOne<{ latest: number; oldest: number }>(
+  `SELECT MAX(checkpoint) as latest, MIN(checkpoint) as oldest FROM transactions`
 );
 
 if (!latest?.latest) {
@@ -48,9 +54,13 @@ if (!latest?.latest) {
 }
 
 const latestCheckpoint = latest.latest;
-const windowStart = latestCheckpoint - CHECKPOINT_WINDOW + 1;
 
-/* ── Checkpoint rows ─────────────────────────────────── */
+// Leaderboard window: up to LEADERBOARD_WINDOW checkpoints back
+const leaderboardStart = latestCheckpoint - LEADERBOARD_WINDOW + 1;
+// Stream window: latest STREAM_WINDOW checkpoints
+const streamStart = latestCheckpoint - STREAM_WINDOW + 1;
+
+/* ── Checkpoint stream (latest 20) ──────────────────── */
 
 type CheckpointRow = {
   checkpoint: number;
@@ -71,7 +81,7 @@ const checkpointRows = query<CheckpointRow>(`
   GROUP BY t.checkpoint
   ORDER BY t.checkpoint DESC
   LIMIT ?
-`, [windowStart, CHECKPOINT_WINDOW]);
+`, [streamStart, STREAM_WINDOW]);
 
 const checkpoints = checkpointRows.map((row, i) => {
   const next = checkpointRows[i + 1];
@@ -90,7 +100,48 @@ const checkpoints = checkpointRows.map((row, i) => {
   };
 });
 
-/* ── Top contracts ───────────────────────────────────── */
+// Average finality from the stream window
+const finalities = checkpoints.map(c => c.finalitySeconds).filter(f => f != null) as number[];
+const avgFinalityMs = finalities.length > 0
+  ? Math.round(finalities.reduce((a, b) => a + b, 0) / finalities.length * 1000)
+  : null;
+
+/* ── Window stats (over the leaderboard window) ──────── */
+
+const windowAgg = queryOne<{ totalTx: number; uniqueWallets: number }>(`
+  SELECT COUNT(*) AS totalTx, COUNT(DISTINCT sender) AS uniqueWallets
+  FROM transactions
+  WHERE checkpoint >= ?
+`, [leaderboardStart]);
+
+// New wallets: appear for the first time in this window
+const newWalletsRow = queryOne<{ newWallets: number }>(`
+  SELECT COUNT(DISTINCT sender) AS newWallets
+  FROM transactions t1
+  WHERE t1.checkpoint >= ?
+    AND t1.sender IS NOT NULL
+    AND t1.sender != ''
+    AND NOT EXISTS (
+      SELECT 1 FROM transactions t2
+      WHERE t2.sender = t1.sender
+        AND t2.checkpoint < ?
+    )
+`, [leaderboardStart, leaderboardStart]);
+
+// Window time span
+const windowTimeRow = queryOne<{ oldest: string; newest: string }>(`
+  SELECT MIN(timestamp) AS oldest, MAX(timestamp) AS newest
+  FROM transactions
+  WHERE checkpoint >= ?
+`, [leaderboardStart]);
+
+const windowDurationSeconds = windowTimeRow?.oldest && windowTimeRow?.newest
+  ? Math.round(
+      (new Date(windowTimeRow.newest).getTime() - new Date(windowTimeRow.oldest).getTime()) / 1000
+    )
+  : null;
+
+/* ── Top contracts (leaderboard window) ──────────────── */
 
 type ContractRow = {
   label: string;
@@ -111,9 +162,9 @@ const topContracts = query<ContractRow>(`
   GROUP BY e.package_id, e.module
   ORDER BY activity DESC
   LIMIT ?
-`, [windowStart, TOP_N]);
+`, [leaderboardStart, TOP_N]);
 
-/* ── Active wallets ──────────────────────────────────── */
+/* ── Active wallets (leaderboard window) ─────────────── */
 
 type WalletRow = {
   label: string;
@@ -134,29 +185,25 @@ const activeWallets = query<WalletRow>(`
   GROUP BY sender
   ORDER BY actions DESC
   LIMIT ?
-`, [windowStart, TOP_N]);
-
-/* ── TPS from SQLite ─────────────────────────────────── */
-
-let tps: number | null = null;
-if (checkpoints.length >= 2) {
-  const newest = checkpoints[0];
-  const oldest = checkpoints[checkpoints.length - 1];
-  const totalTx = checkpoints.reduce((sum, cp) => sum + cp.txCount, 0);
-  const spanMs =
-    new Date(newest.timestamp).getTime() - new Date(oldest.timestamp).getTime();
-  if (spanMs > 0) tps = parseFloat((totalTx / (spanMs / 1000)).toFixed(1));
-}
+`, [leaderboardStart, TOP_N]);
 
 /* ── Network stats (one server-side RPC call) ────────── */
 
 type NetworkStats = {
   epoch: number | null;
   validatorCount: number;
-  tps: number | null;
+  avgFinalityMs: number | null;
+  totalTx: number;
+  uniqueWallets: number;
+  newWallets: number;
+  windowDurationSeconds: number | null;
+  windowCheckpoints: number;
 };
 
 async function fetchNetworkStats(): Promise<NetworkStats> {
+  let epoch: number | null = null;
+  let validatorCount = 0;
+
   try {
     const res = await fetch(SUI_RPC, {
       method: "POST",
@@ -168,18 +215,28 @@ async function fetchNetworkStats(): Promise<NetworkStats> {
         params: [],
       }),
     });
-    const json = (await res.json()) as { result?: { epoch?: string; activeValidators?: unknown[] } };
-    const state = json.result;
-    if (!state) return { epoch: null, validatorCount: 0, tps };
-    return {
-      epoch: state.epoch != null ? parseInt(state.epoch) : null,
-      validatorCount: state.activeValidators?.length ?? 0,
-      tps,
+    const json = (await res.json()) as {
+      result?: { epoch?: string; activeValidators?: unknown[] };
     };
+    const state = json.result;
+    if (state) {
+      epoch = state.epoch != null ? parseInt(state.epoch) : null;
+      validatorCount = state.activeValidators?.length ?? 0;
+    }
   } catch (e) {
     console.warn("Network stats RPC failed:", (e as Error).message);
-    return { epoch: null, validatorCount: 0, tps };
   }
+
+  return {
+    epoch,
+    validatorCount,
+    avgFinalityMs,
+    totalTx: windowAgg?.totalTx ?? 0,
+    uniqueWallets: windowAgg?.uniqueWallets ?? 0,
+    newWallets: newWalletsRow?.newWallets ?? 0,
+    windowDurationSeconds,
+    windowCheckpoints: Math.min(LEADERBOARD_WINDOW, latestCheckpoint - (latest.oldest ?? 0) + 1),
+  };
 }
 
 const networkStats = await fetchNetworkStats();
@@ -189,7 +246,9 @@ const networkStats = await fetchNetworkStats();
 const output = {
   source: "jun sqlite snapshot",
   updatedAt: new Date().toISOString(),
-  window: `${checkpoints.length} checkpoints`,
+  window: windowDurationSeconds != null
+    ? `~${Math.round(windowDurationSeconds / 60)} min`
+    : `${LEADERBOARD_WINDOW} checkpoints`,
   checkpointRange: { latestCheckpoint },
   networkStats,
   checkpoints,
@@ -199,13 +258,17 @@ const output = {
 
 writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
+const mins = windowDurationSeconds ? `${Math.round(windowDurationSeconds / 60)}min` : "unknown";
 console.log(`Wrote ${outPath}`);
-console.log(`  Latest checkpoint : ${latestCheckpoint}`);
-console.log(`  Window            : ${checkpoints.length} checkpoints`);
-console.log(`  Top contracts     : ${topContracts.length}`);
-console.log(`  Active wallets    : ${activeWallets.length}`);
-console.log(`  Epoch             : ${networkStats.epoch ?? "unavailable"}`);
-console.log(`  Validators        : ${networkStats.validatorCount}`);
-console.log(`  TPS               : ${networkStats.tps ?? "unavailable"}`);
+console.log(`  Latest checkpoint  : ${latestCheckpoint}`);
+console.log(`  Leaderboard window : ${LEADERBOARD_WINDOW} checkpoints (${mins})`);
+console.log(`  Total txs          : ${networkStats.totalTx}`);
+console.log(`  Unique wallets     : ${networkStats.uniqueWallets}`);
+console.log(`  New wallets        : ${networkStats.newWallets}`);
+console.log(`  Avg finality       : ${avgFinalityMs != null ? `${avgFinalityMs}ms` : "N/A"}`);
+console.log(`  Epoch              : ${networkStats.epoch ?? "N/A"}`);
+console.log(`  Validators         : ${networkStats.validatorCount}`);
+console.log(`  Top contracts      : ${topContracts.length}`);
+console.log(`  Top wallets        : ${activeWallets.length}`);
 
 db.close();

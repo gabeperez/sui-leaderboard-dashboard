@@ -2,9 +2,8 @@ const DATA_SOURCE = './leaderboard.json';
 const SUISCAN_BASE = 'https://suiscan.xyz/mainnet';
 const REFRESH_INTERVAL = 30;
 
-// Only used if leaderboard.json is missing entirely
 const SAMPLE_DATA = {
-  source: 'sample fallback — run generate-leaderboard.ts',
+  source: 'no data — run generate-leaderboard.ts',
   updatedAt: new Date(0).toISOString(),
   window: '—',
   networkStats: null,
@@ -27,13 +26,39 @@ const WELL_KNOWN_CONTRACTS = new Map([
   ['0x5209a18e1ae6ac994dd5a188a2d8deb17b2bbab29f63a7b5457bdfe040f69f61', 'Alpha Lending']
 ]);
 
-// SUINS name resolution (only RPC call the browser makes — just for address labels)
+// Category detection from module / label text
+const CATEGORY_PATTERNS = [
+  { re: /\b(swap|dex|amm|clmm|trade|pair)\b/i,            label: 'DEX',      color: '#60a5fa' },
+  { re: /\b(pool|liquidity|lp)\b/i,                        label: 'DEX',      color: '#60a5fa' },
+  { re: /\b(lend|borrow|collateral|credit|alpha.lend)\b/i, label: 'Lending',  color: '#a78bfa' },
+  { re: /\b(vault|yield|farm|earn|stake|reward)\b/i,       label: 'Yield',    color: '#34d399' },
+  { re: /\b(oracle|price|feed|pyth|switch|pull)\b/i,       label: 'Oracle',   color: '#fbbf24' },
+  { re: /\b(bridge|wormhole|portal|cross.chain)\b/i,       label: 'Bridge',   color: '#f87171' },
+  { re: /\b(nft|mint|collection|media|art)\b/i,            label: 'NFT',      color: '#e879f9' },
+  { re: /\b(game|quest|hero|battle|play)\b/i,              label: 'Gaming',   color: '#fb923c' },
+  { re: /\b(campaign|airdrop|launch|sale)\b/i,             label: 'Campaign', color: '#fb923c' },
+  { re: /\b(dbke|interface|entrypoint|router)\b/i,         label: 'Infra',    color: '#94a3b8' },
+];
+
+function detectCategory(label) {
+  const text = String(label ?? '').toLowerCase();
+  for (const { re, label: cat, color } of CATEGORY_PATTERNS) {
+    if (re.test(text)) return { label: cat, color };
+  }
+  return { label: 'Protocol', color: '#64748b' };
+}
+
+function categoryBadge(label) {
+  const cat = detectCategory(label);
+  return `<span class="cat-badge" style="--cat-color:${cat.color}">${cat.label}</span>`;
+}
+
+// SUINS name resolution — only browser network call
 const rpcCache = new Map();
 const nameCache = new Map();
 
 const $ = (selector) => document.querySelector(selector);
 
-/* ── Previous state for rank tracking ───────────────── */
 let previousContracts = [];
 let previousWallets = [];
 let refreshTimer = null;
@@ -46,20 +71,10 @@ function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(value ?? 0);
 }
 
-function formatBig(n) {
-  if (n == null) return '—';
-  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  return formatNumber(n);
-}
-
 function formatTime(value) {
   if (!value) return '—';
   return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    month: 'short',
-    day: 'numeric'
+    hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric'
   }).format(new Date(value));
 }
 
@@ -68,38 +83,33 @@ function timeAgo(value) {
   const date = new Date(value);
   if (isNaN(date.getTime())) return String(value);
   const diff = Date.now() - date.getTime();
-  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 60000)   return `${Math.floor(diff / 1000)}s ago`;
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   return `${Math.floor(diff / 86400000)}d ago`;
 }
 
+function formatDuration(seconds) {
+  if (!seconds) return '—';
+  if (seconds < 60)   return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
+}
+
 function normalizeData(raw) {
   const payload = raw?.data ?? raw ?? {};
   return {
-    source: payload.source || 'jun export',
-    updatedAt: payload.updatedAt || new Date().toISOString(),
-    window: payload.window || '—',
+    source:       payload.source       || 'jun export',
+    updatedAt:    payload.updatedAt    || new Date().toISOString(),
+    window:       payload.window       || '—',
     networkStats: payload.networkStats ?? null,
-    checkpoints: payload.checkpoints || payload.recentCheckpoints || [],
-    topContracts: payload.topContracts || payload.contracts || [],
-    activeWallets: payload.activeWallets || payload.wallets || []
+    checkpoints:  payload.checkpoints  || payload.recentCheckpoints || [],
+    topContracts: payload.topContracts || payload.contracts          || [],
+    activeWallets:payload.activeWallets|| payload.wallets            || []
   };
 }
 
-/* ── SuiScan link helpers ───────────────────────────── */
-
-function suiscanCheckpointUrl(seq) {
-  return `${SUISCAN_BASE}/checkpoint/${seq}`;
-}
-
-function suiscanAccountUrl(address) {
-  return `${SUISCAN_BASE}/account/${address}`;
-}
-
-function suiscanObjectUrl(address) {
-  return `${SUISCAN_BASE}/object/${address}`;
-}
+/* ── SuiScan ────────────────────────────────────────── */
 
 const EXT_ICON = '<svg class="ext-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10L10 2M6 2h4v4"/></svg>';
 
@@ -107,91 +117,69 @@ function extLink(url, label) {
   return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ext-link">${label}${EXT_ICON}</a>`;
 }
 
-/* ── Address resolution (SUINS — only browser RPC) ─── */
+function suiscanCheckpointUrl(seq)  { return `${SUISCAN_BASE}/checkpoint/${seq}`; }
+function suiscanAccountUrl(address) { return `${SUISCAN_BASE}/account/${address}`; }
+function suiscanObjectUrl(address)  { return `${SUISCAN_BASE}/object/${address}`; }
 
-function isHexAddress(value) {
-  return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
+/* ── Address helpers ────────────────────────────────── */
+
+function isHexAddress(v) { return typeof v === 'string' && /^0x[0-9a-fA-F]+$/.test(v); }
+function normalizeAddress(v) { return typeof v === 'string' ? v.trim().toLowerCase() : ''; }
+function isZeroAddress(v) {
+  const n = normalizeAddress(v);
+  return n === '0x' + '0'.repeat(64) || n === '0x0';
 }
-
-function normalizeAddress(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+function shortAddress(v) {
+  if (!v) return '—';
+  const a = String(v);
+  return a.length <= 14 ? a : `${a.slice(0, 8)}…${a.slice(-4)}`;
 }
-
-function isZeroAddress(value) {
-  const norm = normalizeAddress(value);
-  return norm === '0x0000000000000000000000000000000000000000000000000000000000000000'
-    || norm === '0x0';
+function humanizeName(v) {
+  return String(v || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase()).trim();
 }
-
-function shortAddress(value) {
-  if (!value) return '—';
-  const address = String(value);
-  if (address.length <= 14) return address;
-  return `${address.slice(0, 8)}…${address.slice(-4)}`;
-}
-
-function humanizeName(value) {
-  if (!value) return '';
-  return String(value)
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
-}
-
 function splitContractLabel(label) {
-  const text = String(label ?? '');
-  const parts = text.split('::');
+  const parts = String(label ?? '').split('::');
   if (parts.length >= 2 && isHexAddress(parts[0])) {
-    return {
-      address: normalizeAddress(parts[0]),
-      module: parts.slice(1).join('::')
-    };
+    return { address: normalizeAddress(parts[0]), module: parts.slice(1).join('::') };
   }
-  return { address: null, module: text };
+  return { address: null, module: String(label ?? '') };
 }
+
+/* ── SUINS (only RPC the browser makes) ─────────────── */
 
 async function suinsRpcCall(method, params) {
-  const cacheKey = `${method}:${JSON.stringify(params)}`;
-  if (rpcCache.has(cacheKey)) return rpcCache.get(cacheKey);
-
-  const request = fetch('https://fullnode.mainnet.sui.io:443', {
+  const key = `${method}:${JSON.stringify(params)}`;
+  if (rpcCache.has(key)) return rpcCache.get(key);
+  const p = fetch('https://fullnode.mainnet.sui.io:443', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 'sui-dashboard', method, params })
-  })
-    .then(async (r) => {
-      const json = await r.json();
-      if (json.error) throw new Error(json.error.message || `${method} failed`);
-      return json.result;
-    })
-    .catch((e) => { rpcCache.delete(cacheKey); throw e; });
-
-  rpcCache.set(cacheKey, request);
-  return request;
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'dashboard', method, params })
+  }).then(async r => {
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message);
+    return j.result;
+  }).catch(e => { rpcCache.delete(key); throw e; });
+  rpcCache.set(key, p);
+  return p;
 }
 
 async function lookupSuinsNames(address) {
-  const normalized = normalizeAddress(address);
-  if (!normalized) return [];
-  if (nameCache.has(normalized)) return nameCache.get(normalized);
-
-  const promise = suinsRpcCall('suix_resolveNameServiceNames', [normalized])
-    .then((result) => {
-      const names = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-      return names.filter(Boolean).map(String);
-    })
+  const norm = normalizeAddress(address);
+  if (!norm) return [];
+  if (nameCache.has(norm)) return nameCache.get(norm);
+  const p = suinsRpcCall('suix_resolveNameServiceNames', [norm])
+    .then(r => (Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : []).filter(Boolean).map(String))
     .catch(() => []);
-
-  nameCache.set(normalized, promise);
-  return promise;
+  nameCache.set(norm, p);
+  return p;
 }
 
 async function resolveWalletLabel(address) {
-  const normalized = normalizeAddress(address);
-  if (!normalized) return 'Unknown wallet';
-  const names = await lookupSuinsNames(normalized);
-  return names[0] ?? shortAddress(normalized);
+  const norm = normalizeAddress(address);
+  if (!norm) return 'Unknown';
+  const names = await lookupSuinsNames(norm);
+  return names[0] ?? shortAddress(norm);
 }
 
 async function resolveContractLabel(item) {
@@ -203,193 +191,144 @@ async function resolveContractLabel(item) {
   if (!packageId) return rawLabel || 'Unknown contract';
 
   const known = WELL_KNOWN_CONTRACTS.get(packageId);
-  if (known) {
-    return moduleName && known.toLowerCase() !== moduleName.toLowerCase()
-      ? `${known} · ${moduleName}` : known;
-  }
+  if (known) return moduleName && known.toLowerCase() !== moduleName.toLowerCase()
+    ? `${known} · ${moduleName}` : known;
 
   const names = await lookupSuinsNames(packageId);
-  const resolvedName = names[0];
-  if (resolvedName) {
-    return moduleName && resolvedName.toLowerCase() !== moduleName.toLowerCase()
-      ? `${resolvedName} · ${moduleName}` : resolvedName;
-  }
+  const resolved = names[0];
+  if (resolved) return moduleName && resolved.toLowerCase() !== moduleName.toLowerCase()
+    ? `${resolved} · ${moduleName}` : resolved;
 
-  const fallback = shortAddress(packageId);
-  return moduleName ? `${fallback} · ${moduleName}` : fallback;
+  return moduleName ? `${shortAddress(packageId)} · ${moduleName}` : shortAddress(packageId);
 }
 
 async function enrichData(data) {
   const wallets = (data.activeWallets || []).filter(
-    (w) => !isZeroAddress(w.label ?? w.wallet ?? w.address ?? w.owner ?? '')
+    w => !isZeroAddress(w.label ?? w.wallet ?? w.address ?? w.owner ?? '')
   );
-
   const [topContracts, activeWallets] = await Promise.all([
-    Promise.all((data.topContracts || []).map(async (item) => ({
-      ...item,
-      displayLabel: await resolveContractLabel(item)
+    Promise.all((data.topContracts || []).map(async item => ({
+      ...item, displayLabel: await resolveContractLabel(item)
     }))),
-    Promise.all(wallets.map(async (item) => ({
-      ...item,
-      displayLabel: await resolveWalletLabel(item.label ?? item.wallet ?? item.address ?? item.owner)
+    Promise.all(wallets.map(async item => ({
+      ...item, displayLabel: await resolveWalletLabel(
+        item.label ?? item.wallet ?? item.address ?? item.owner
+      )
     })))
   ]);
-
   return { ...data, topContracts, activeWallets };
 }
 
-/* ── Copy to clipboard ──────────────────────────────── */
+/* ── Clipboard ──────────────────────────────────────── */
 
 const COPY_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 014.5 2H11"/></svg>';
 
 function copyToClipboard(text) {
   navigator.clipboard.writeText(text)
-    .then(() => showToast('Copied to clipboard'))
+    .then(() => showToast('Copied'))
     .catch(() => showToast('Copy failed'));
 }
 
-/* ── Toast notifications ────────────────────────────── */
+/* ── Toast ──────────────────────────────────────────── */
 
-function showToast(message) {
-  const container = $('#toast-container');
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>${message}`;
-  container.appendChild(toast);
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round"><path d="M3.5 8.5L6.5 11.5L12.5 4.5"/></svg>${msg}`;
+  $('#toast-container').appendChild(t);
   setTimeout(() => {
-    toast.classList.add('toast-out');
-    toast.addEventListener('animationend', () => toast.remove());
+    t.classList.add('toast-out');
+    t.addEventListener('animationend', () => t.remove());
   }, 1800);
 }
 
-/* ── Count-up animation ─────────────────────────────── */
+/* ── Count-up ───────────────────────────────────────── */
 
-function animateValue(element, targetText) {
-  const cleanTarget = targetText.replace(/[^0-9]/g, '');
+function animateValue(el, targetText) {
+  const digits = targetText.replace(/[^0-9]/g, '');
   const prefix = targetText.match(/^[^0-9]*/)?.[0] || '';
   const suffix = targetText.match(/[^0-9]*$/)?.[0] || '';
-
-  if (!cleanTarget || isNaN(Number(cleanTarget))) {
-    element.textContent = targetText;
-    return;
-  }
-
-  const target = Number(cleanTarget);
-  const duration = 600;
+  if (!digits || isNaN(Number(digits))) { el.textContent = targetText; return; }
+  const target = Number(digits);
   const start = performance.now();
-
-  function tick(now) {
-    const elapsed = now - start;
-    const progress = Math.min(elapsed / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    element.textContent = prefix + formatNumber(Math.round(target * eased)) + suffix;
-    if (progress < 1) requestAnimationFrame(tick);
-  }
-
-  requestAnimationFrame(tick);
+  (function tick(now) {
+    const p = Math.min((now - start) / 600, 1);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = prefix + new Intl.NumberFormat('en-US').format(Math.round(target * eased)) + suffix;
+    if (p < 1) requestAnimationFrame(tick);
+  })(start);
 }
 
-/* ── Sparkline renderer ─────────────────────────────── */
+/* ── Sparkline ──────────────────────────────────────── */
 
 function drawSparkline(canvasId, values, color = '#60a5fa') {
   const canvas = $(`#${canvasId}`);
   if (!canvas || !values.length) return;
-
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   canvas.width = canvas.offsetWidth * dpr;
   canvas.height = canvas.offsetHeight * dpr;
   ctx.scale(dpr, dpr);
-
-  const w = canvas.offsetWidth;
-  const h = canvas.offsetHeight;
-  const padding = 2;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-
+  const w = canvas.offsetWidth, h = canvas.offsetHeight, p = 2;
+  const min = Math.min(...values), max = Math.max(...values), range = max - min || 1;
   ctx.clearRect(0, 0, w, h);
-
-  const gradient = ctx.createLinearGradient(0, 0, 0, h);
-  gradient.addColorStop(0, color.replace(')', ', 0.25)').replace('rgb', 'rgba'));
-  gradient.addColorStop(1, 'transparent');
-
-  const drawPath = () => {
-    ctx.beginPath();
-    values.forEach((v, i) => {
-      const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
-      const y = h - padding - ((v - min) / range) * (h - padding * 2);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
-  };
-
-  drawPath();
-  ctx.lineTo(w - padding, h);
-  ctx.lineTo(padding, h);
-  ctx.closePath();
-  ctx.fillStyle = gradient;
-  ctx.fill();
-
-  drawPath();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-
-  const lastX = w - padding;
-  const lastY = h - padding - ((values[values.length - 1] - min) / range) * (h - padding * 2);
-  ctx.beginPath();
-  ctx.arc(lastX, lastY, 2.5, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color.replace(')', ', 0.2)').replace('rgb', 'rgba'));
+  grad.addColorStop(1, 'transparent');
+  const path = () => { ctx.beginPath(); values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * (w - p * 2) + p;
+    const y = h - p - ((v - min) / range) * (h - p * 2);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }); };
+  path(); ctx.lineTo(w - p, h); ctx.lineTo(p, h); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  path(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+  const lx = w - p, ly = h - p - ((values[values.length-1] - min) / range) * (h - p * 2);
+  ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
 }
 
 /* ── Rank helpers ───────────────────────────────────── */
 
-function getRankChange(label, previousList) {
-  if (!previousList.length) return '';
-  return previousList.findIndex((p) => p === label) === -1
-    ? '<span class="rank-change rank-new">NEW</span>' : '';
+function rankBadge(i) {
+  const r = i + 1;
+  return `<span class="rank-badge${r <= 3 ? ` rank-${r}` : ''}">${r}</span>`;
 }
-
-function rankBadge(index) {
-  const rank = index + 1;
-  const cls = rank <= 3 ? ` rank-${rank}` : '';
-  return `<span class="rank-badge${cls}">${rank}</span>`;
+function getRankChange(label, prev) {
+  if (!prev.length) return '';
+  return prev.findIndex(p => p === label) === -1
+    ? '<span class="rank-change rank-new">NEW</span>' : '';
 }
 
 /* ── Activity bar ───────────────────────────────────── */
 
 function activityBar(value, maxValue) {
   const pct = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
-  return `
-    <div class="activity-bar-wrap">
-      <span class="row-title">${formatNumber(value)}</span>
-      <div class="activity-bar"><div class="activity-bar-fill" style="width:${pct}%"></div></div>
-    </div>`;
+  return `<div class="activity-bar-wrap">
+    <span class="row-title">${formatNumber(value)}</span>
+    <div class="activity-bar"><div class="activity-bar-fill" style="width:${pct}%"></div></div>
+  </div>`;
 }
 
 function copyButton(text) {
-  const escaped = text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-  return `<button class="copy-btn" onclick="copyToClipboard('${escaped}')" title="Copy address">${COPY_ICON}</button>`;
+  const esc = text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return `<button class="copy-btn" onclick="copyToClipboard('${esc}')" title="Copy">${COPY_ICON}</button>`;
 }
 
-/* ── Status dot ─────────────────────────────────────── */
+/* ── Status ─────────────────────────────────────────── */
 
 function setStatus(ageMs) {
-  const dot = $('#statusDot');
-  const text = $('#statusText');
+  const dot = $('#statusDot'), text = $('#statusText');
   dot.classList.remove('is-live', 'is-stale', 'is-offline');
-
   if (ageMs < 5 * 60 * 1000) {
     dot.classList.add('is-live');
-    text.textContent = 'jun-indexed · live';
+    text.textContent = 'Live · jun-indexed Sui mainnet';
   } else if (ageMs < 60 * 60 * 1000) {
     dot.classList.add('is-stale');
-    text.textContent = `jun-indexed · ${timeAgo(Date.now() - ageMs)}`;
+    text.textContent = `Stale · updated ${timeAgo(Date.now() - ageMs)}`;
   } else {
     dot.classList.add('is-offline');
-    text.textContent = `jun-indexed · stale (${timeAgo(Date.now() - ageMs)})`;
+    text.textContent = `Outdated · run generate-leaderboard.ts`;
   }
 }
 
@@ -400,8 +339,7 @@ function updateStaleBanner(updatedAt) {
   if (!banner) return;
   const age = Date.now() - new Date(updatedAt).getTime();
   if (age > 3600000) {
-    const h = Math.floor(age / 3600000);
-    banner.textContent = `Data is ${h}h old — re-run generate-leaderboard.ts and redeploy leaderboard.json to refresh.`;
+    banner.textContent = `Data is ${Math.floor(age / 3600000)}h old — re-run generate-leaderboard.ts and redeploy leaderboard.json.`;
     banner.hidden = false;
   } else {
     banner.hidden = true;
@@ -412,10 +350,8 @@ function updateStaleBanner(updatedAt) {
 
 async function loadData() {
   try {
-    const response = await fetch(DATA_SOURCE, { cache: 'no-store' });
-    if (response.ok) {
-      return normalizeData(await response.json());
-    }
+    const r = await fetch(DATA_SOURCE, { cache: 'no-store' });
+    if (r.ok) return normalizeData(await r.json());
   } catch (_) {}
   return { ...SAMPLE_DATA, _isFallback: true };
 }
@@ -430,14 +366,12 @@ function renderLoading() {
       <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
       <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
     </div>`).join('');
-
   $('#contractList').innerHTML = Array.from({ length: 4 }).map(() => `
     <div class="contract-row is-loading">
       <div><div class="h-4 w-48 rounded bg-white/10 pulse"></div><div class="mt-2 h-3 w-28 rounded bg-white/5 pulse"></div></div>
       <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
       <div class="h-4 w-16 rounded bg-white/10 pulse"></div>
     </div>`).join('');
-
   $('#walletList').innerHTML = Array.from({ length: 5 }).map(() => `
     <div class="wallet-row is-loading">
       <div><div class="h-4 w-32 rounded bg-white/10 pulse"></div><div class="mt-2 h-3 w-24 rounded bg-white/5 pulse"></div></div>
@@ -446,20 +380,94 @@ function renderLoading() {
     </div>`).join('');
 }
 
-/* ── Render network stats ───────────────────────────── */
+/* ── Hero summary cards ─────────────────────────────── */
 
-function renderNetworkStats(stats) {
-  const container = $('#networkStatsGrid');
+function updateSummary(data, animate = true) {
+  const stats = data.networkStats;
+  const checkpoints = data.checkpoints || [];
+  const contracts = data.topContracts || [];
+  const wallets = data.activeWallets || [];
+
+  $('#sourceLabel').textContent = data.source || 'jun export';
+  $('#updatedLabel').textContent = formatTime(data.updatedAt);
+
+  // Window badge on checkpoint stream section
+  const winEl = $('#checkpointWindow');
+  if (winEl) winEl.textContent = data.window || '—';
+
+  // Contract / wallet badges
+  const cMeta = $('#contractMeta'), wMeta = $('#walletMeta');
+  if (cMeta) cMeta.textContent = `${formatNumber(contracts.length)} protocols`;
+  if (wMeta) wMeta.textContent = `${formatNumber(wallets.length)} wallets`;
+
+  // Hero card 1: avg finality
+  const fEl = $('#metricFinality'), fNote = $('#metricFinalityNote');
+  const fMs = stats?.avgFinalityMs;
+  if (fEl) {
+    if (animate && fMs) animateValue(fEl, `${fMs}ms`);
+    else fEl.textContent = fMs ? `${fMs}ms` : '—';
+  }
+  if (fNote) fNote.textContent = fMs ? 'avg across last 20 checkpoints' : 'Run generate-leaderboard.ts';
+
+  // Hero card 2: total transactions in window
+  const txEl = $('#metricTx'), txNote = $('#metricTxNote');
+  const totalTx = stats?.totalTx ?? 0;
+  if (txEl) {
+    if (animate && totalTx) animateValue(txEl, formatNumber(totalTx));
+    else txEl.textContent = totalTx ? formatNumber(totalTx) : '—';
+  }
+  if (txNote) txNote.textContent = `in the last ${data.window || '—'}`;
+
+  // Hero card 3: unique wallets
+  const uwEl = $('#metricWallets'), uwNote = $('#metricWalletsNote');
+  const uniqueWallets = stats?.uniqueWallets ?? 0;
+  if (uwEl) {
+    if (animate && uniqueWallets) animateValue(uwEl, formatNumber(uniqueWallets));
+    else uwEl.textContent = uniqueWallets ? formatNumber(uniqueWallets) : '—';
+  }
+  if (uwNote) {
+    const newW = stats?.newWallets;
+    uwNote.textContent = newW ? `${formatNumber(newW)} new this window` : 'Unique senders';
+  }
+
+  // Hero card 4: active protocols
+  const prEl = $('#metricProtocols'), prNote = $('#metricProtocolsNote');
+  if (prEl) {
+    if (animate && contracts.length) animateValue(prEl, String(contracts.length));
+    else prEl.textContent = contracts.length ? String(contracts.length) : '—';
+  }
+  if (prNote) prNote.textContent = contracts.length ? 'competing for activity' : 'No contract data';
+
+  // Sparklines
+  const txVals = checkpoints.map(c => c.txCount ?? 0).reverse();
+  const contractActs = contracts.map(c => c.activity ?? 0);
+  const walletActs = wallets.map(w => w.actions ?? 0);
+  const finalityVals = checkpoints.map(c => c.finalitySeconds ?? 0).reverse().filter(Boolean);
+  const pad = (arr, min) => arr.length >= min ? arr : [...Array(min - arr.length).fill(arr[0] ?? 0), ...arr];
+
+  drawSparkline('sparkFinality', pad(finalityVals.map(f => f * 1000), 6), '#7dd3fc');
+  drawSparkline('sparkTx', pad(txVals, 6), '#60a5fa');
+  drawSparkline('sparkWallets', pad(new Array(Math.min(wallets.length, 6)).fill(uniqueWallets / 6), 6), '#34d399');
+  drawSparkline('sparkProtocols', pad(contractActs.slice(0, 6), 6), '#a78bfa');
+}
+
+/* ── Network health panel ───────────────────────────── */
+
+function renderNetworkHealth(data) {
+  const container = $('#networkHealthGrid');
   if (!container) return;
+  const stats = data.networkStats;
 
   if (!stats) {
-    container.innerHTML = `
-      <div class="net-stat-item" style="grid-column:span 2">
-        <span class="net-stat-label">Network stats</span>
-        <span class="net-stat-value" style="font-size:1rem;color:rgba(203,213,225,0.5)">Run generate-leaderboard.ts to populate</span>
-      </div>`;
+    container.innerHTML = `<div class="net-stat-item" style="grid-column:span 2">
+      <span class="net-stat-label">No data</span>
+      <span class="net-stat-value" style="font-size:0.95rem;color:rgba(203,213,225,0.5)">Run generate-leaderboard.ts</span>
+    </div>`;
     return;
   }
+
+  const dur = stats.windowDurationSeconds;
+  const durStr = dur ? formatDuration(dur) : data.window || '—';
 
   container.innerHTML = `
     <div class="net-stat-item">
@@ -468,90 +476,91 @@ function renderNetworkStats(stats) {
     </div>
     <div class="net-stat-item">
       <span class="net-stat-label">Validators</span>
-      <span class="net-stat-value">${stats.validatorCount ?? '—'}</span>
-    </div>
-    <div class="net-stat-item">
-      <span class="net-stat-label">Est. TPS</span>
-      <span class="net-stat-value">${stats.tps ?? '—'}</span>
+      <span class="net-stat-value">${stats.validatorCount || '—'}</span>
     </div>
     <div class="net-stat-item">
       <span class="net-stat-label">Window</span>
-      <span class="net-stat-value" style="font-size:1rem">${stats.window ?? '20 checkpoints'}</span>
+      <span class="net-stat-value" style="font-size:1.1rem">${durStr}</span>
+    </div>
+    <div class="net-stat-item">
+      <span class="net-stat-label">New wallets</span>
+      <span class="net-stat-value" style="font-size:1.1rem">${stats.newWallets ? formatNumber(stats.newWallets) : '—'}</span>
     </div>
   `;
 }
 
-/* ── Render checkpoints ─────────────────────────────── */
+/* ── Checkpoint stream ──────────────────────────────── */
 
 function renderCheckpoints(checkpoints) {
   const list = $('#checkpointList');
   if (!checkpoints.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No checkpoint data — run generate-leaderboard.ts.</div>`;
+    list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-slate-400">No checkpoint data — run generate-leaderboard.ts.</div>`;
     return;
   }
-
   list.innerHTML = checkpoints.map((item, i) => {
     const seq = item.checkpoint ?? item.height ?? item.id;
     const finality = item.finalitySeconds != null
-      ? `${Number(item.finalitySeconds).toFixed(2)}s` : '—';
+      ? `${(item.finalitySeconds * 1000).toFixed(0)}ms` : '—';
+    const finalityClass = item.finalitySeconds != null && item.finalitySeconds < 0.4
+      ? 'finality-fast' : '';
     return `
-    <div class="checkpoint-row row-enter" style="animation-delay:${i * 50}ms">
+    <div class="checkpoint-row row-enter" style="animation-delay:${i * 40}ms">
       <div>
         <div class="row-title">${extLink(suiscanCheckpointUrl(seq), `#${formatNumber(seq)}`)}</div>
-        <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : 'Recent'}</div>
+        <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : ''}</div>
       </div>
       <div>
-        <div class="row-title">${formatNumber(item.txCount ?? item.transactions ?? 0)}</div>
-        <div class="row-subtitle">transactions</div>
+        <div class="row-title">${formatNumber(item.txCount ?? 0)}</div>
+        <div class="row-subtitle">txs</div>
       </div>
       <div>
-        <div class="row-title">${formatNumber(item.eventCount ?? item.events ?? 0)}</div>
+        <div class="row-title">${formatNumber(item.eventCount ?? 0)}</div>
         <div class="row-subtitle">events</div>
       </div>
       <div>
-        <div class="row-title">${finality}</div>
+        <div class="row-title ${finalityClass}">${finality}</div>
         <div class="row-subtitle">finality</div>
       </div>
     </div>`;
   }).join('');
 }
 
-/* ── Render contracts ───────────────────────────────── */
+/* ── Protocol activity ──────────────────────────────── */
 
 function renderContracts(topContracts) {
   const list = $('#contractList');
   if (!topContracts.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No contract data — run generate-leaderboard.ts.</div>`;
+    list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-slate-400">No protocol data — run generate-leaderboard.ts.</div>`;
     return;
   }
-
-  const maxActivity = Math.max(...topContracts.map((c) => c.activity ?? c.count ?? 0));
-  const prevLabels = previousContracts.map((c) => c.displayLabel ?? c.label ?? '');
+  const maxAct = Math.max(...topContracts.map(c => c.activity ?? 0));
+  const prevLabels = previousContracts.map(c => c.displayLabel ?? c.label ?? '');
 
   list.innerHTML = topContracts.map((item, i) => {
-    const label = item.displayLabel ?? item.label ?? item.contract ?? item.name ?? 'Unknown contract';
-    const activity = item.activity ?? item.count ?? 0;
-    const wallets = item.wallets ?? item.uniqueWallets ?? 0;
+    const label = item.displayLabel ?? item.label ?? 'Unknown';
+    const activity = item.activity ?? 0;
+    const wallets = item.wallets ?? 0;
     const change = getRankChange(label, prevLabels);
-    const { address } = splitContractLabel(item.label ?? item.contract ?? item.name ?? '');
-    const addressToCopy = address || label;
+    const { address } = splitContractLabel(item.label ?? item.contract ?? '');
+    const rawForLabel = item.displayLabel ?? shortAddress(address) ?? label;
 
     return `
-    <div class="contract-row row-enter" style="animation-delay:${i * 50}ms">
+    <div class="contract-row row-enter" style="animation-delay:${i * 40}ms">
       <div style="display:flex;align-items:center;gap:0.6rem">
         ${rankBadge(i)}
         <div style="min-width:0">
-          <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
+          <div class="row-title" style="display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap">
             ${address
-              ? extLink(suiscanObjectUrl(address), label)
-              : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`}
-            ${copyButton(addressToCopy)}
+              ? extLink(suiscanObjectUrl(address), rawForLabel)
+              : `<span>${rawForLabel}</span>`}
+            ${categoryBadge(label)}
+            ${copyButton(address || label)}
             ${change}
           </div>
           <div class="row-subtitle">${address ? shortAddress(address) : 'Unknown package'}</div>
         </div>
       </div>
-      <div>${activityBar(activity, maxActivity)}</div>
+      <div>${activityBar(activity, maxAct)}</div>
       <div>
         <div class="row-title">${formatNumber(wallets)}</div>
         <div class="row-subtitle">wallets</div>
@@ -559,103 +568,49 @@ function renderContracts(topContracts) {
     </div>`;
   }).join('');
 
-  previousContracts = topContracts.map((c) => ({ ...c }));
+  previousContracts = topContracts.map(c => ({ ...c }));
 }
 
-/* ── Render wallets ─────────────────────────────────── */
+/* ── Power users ────────────────────────────────────── */
 
 function renderWallets(activeWallets) {
   const list = $('#walletList');
   if (!activeWallets.length) {
-    list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No wallet data — run generate-leaderboard.ts.</div>`;
+    list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-slate-400">No wallet data — run generate-leaderboard.ts.</div>`;
     return;
   }
-
-  const maxActions = Math.max(...activeWallets.map((w) => w.actions ?? w.count ?? 0));
-  const prevLabels = previousWallets.map((w) => w.displayLabel ?? w.label ?? '');
+  const maxAct = Math.max(...activeWallets.map(w => w.actions ?? 0));
+  const prevLabels = previousWallets.map(w => w.displayLabel ?? w.label ?? '');
 
   list.innerHTML = activeWallets.map((item, i) => {
-    const rawAddress = normalizeAddress(item.label ?? item.wallet ?? item.address ?? item.owner ?? '');
-    const label = item.displayLabel ?? shortAddress(rawAddress) ?? 'Unknown wallet';
-    const actions = item.actions ?? item.count ?? 0;
+    const rawAddr = normalizeAddress(item.label ?? item.wallet ?? item.address ?? item.owner ?? '');
+    const label = item.displayLabel ?? shortAddress(rawAddr) ?? 'Unknown';
+    const actions = item.actions ?? 0;
     const lastSeenText = timeAgo(item.lastSeen ?? item.updatedAt ?? null);
     const change = getRankChange(label, prevLabels);
 
     return `
-    <div class="wallet-row row-enter" style="animation-delay:${i * 50}ms">
+    <div class="wallet-row row-enter" style="animation-delay:${i * 40}ms">
       <div style="display:flex;align-items:center;gap:0.6rem">
         ${rankBadge(i)}
         <div style="min-width:0">
           <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
-            ${rawAddress
-              ? extLink(suiscanAccountUrl(rawAddress), label)
-              : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`}
-            ${rawAddress ? copyButton(rawAddress) : ''}
+            ${rawAddr ? extLink(suiscanAccountUrl(rawAddr), label) : `<span>${label}</span>`}
+            ${rawAddr ? copyButton(rawAddr) : ''}
             ${change}
           </div>
-          <div class="row-subtitle">${rawAddress ? shortAddress(rawAddress) : ''}</div>
+          <div class="row-subtitle">${rawAddr ? shortAddress(rawAddr) : ''}</div>
         </div>
       </div>
-      <div>${activityBar(actions, maxActions)}</div>
+      <div>${activityBar(actions, maxAct)}</div>
       <div><span class="row-pill">${lastSeenText}</span></div>
     </div>`;
   }).join('');
 
-  previousWallets = activeWallets.map((w) => ({ ...w }));
+  previousWallets = activeWallets.map(w => ({ ...w }));
 }
 
-/* ── Update summary ─────────────────────────────────── */
-
-function updateSummary(data, animate = true) {
-  const checkpoints = data.checkpoints || [];
-  const contracts = data.topContracts || [];
-  const wallets = data.activeWallets || [];
-  const latestCheckpoint = checkpoints[0];
-
-  $('#sourceLabel').textContent = data.source || 'jun export';
-  $('#updatedLabel').textContent = formatTime(data.updatedAt);
-  $('#checkpointWindow').textContent = data.window ? `${data.window}` : '—';
-  $('#contractMeta').textContent = `${formatNumber(contracts.length)} contracts`;
-  $('#walletMeta').textContent = `${formatNumber(wallets.length)} wallets`;
-
-  const latestEl = $('#latestCheckpoint');
-  const countEl = $('#checkpointCount');
-  const contractEl = $('#contractCount');
-  const walletEl = $('#walletCount');
-
-  if (animate) {
-    if (latestCheckpoint) {
-      animateValue(latestEl, `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}`);
-    } else {
-      latestEl.textContent = '—';
-    }
-    animateValue(countEl, formatNumber(checkpoints.length));
-    animateValue(contractEl, formatNumber(contracts.length));
-    animateValue(walletEl, formatNumber(wallets.length));
-  } else {
-    latestEl.textContent = latestCheckpoint
-      ? `#${formatNumber(latestCheckpoint.checkpoint ?? latestCheckpoint.height ?? latestCheckpoint.id)}` : '—';
-    countEl.textContent = formatNumber(checkpoints.length);
-    contractEl.textContent = formatNumber(contracts.length);
-    walletEl.textContent = formatNumber(wallets.length);
-  }
-
-  $('#latestCheckpointNote').textContent = latestCheckpoint
-    ? `${formatNumber(latestCheckpoint.txCount ?? latestCheckpoint.transactions ?? 0)} txs in the latest checkpoint`
-    : 'Run generate-leaderboard.ts to populate';
-
-  const txValues = checkpoints.map((c) => c.txCount ?? c.transactions ?? 0).reverse();
-  const contractActivities = contracts.map((c) => c.activity ?? c.count ?? 0);
-  const walletActions = wallets.map((w) => w.actions ?? w.count ?? 0);
-  const pad = (arr, min) => arr.length >= min ? arr : [...Array(min - arr.length).fill(arr[0] ?? 0), ...arr];
-
-  drawSparkline('sparkCheckpoint', pad(checkpoints.map((c) => c.checkpoint ?? c.height ?? 0).reverse(), 6), '#7dd3fc');
-  drawSparkline('sparkTx', pad(txValues, 6), '#60a5fa');
-  drawSparkline('sparkContracts', pad(contractActivities, 6), '#a78bfa');
-  drawSparkline('sparkWallets', pad(walletActions, 6), '#34d399');
-}
-
-/* ── Auto-refresh ───────────────────────────────────── */
+/* ── Refresh timer ──────────────────────────────────── */
 
 function startRefreshTimer() {
   countdown = REFRESH_INTERVAL;
@@ -677,49 +632,39 @@ function updateCountdownDisplay() {
 async function refresh() {
   countdown = REFRESH_INTERVAL;
   updateCountdownDisplay();
-
   const data = await loadData();
   const enriched = await enrichData(data);
-
   updateSummary(enriched, true);
   renderCheckpoints(enriched.checkpoints || []);
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
-  renderNetworkStats(enriched.networkStats ?? null);
+  renderNetworkHealth(enriched);
   updateStaleBanner(enriched.updatedAt);
-
   const age = Date.now() - new Date(enriched.updatedAt).getTime();
   setStatus(enriched._isFallback ? Infinity : age);
 }
 
-document.addEventListener('visibilitychange', () => {
-  isPageVisible = !document.hidden;
-});
+document.addEventListener('visibilitychange', () => { isPageVisible = !document.hidden; });
 
 /* ── Main ───────────────────────────────────────────── */
 
 async function main() {
   renderLoading();
-
   const data = await loadData();
   const enriched = await enrichData(data);
-
   updateSummary(enriched, true);
   renderCheckpoints(enriched.checkpoints || []);
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
-  renderNetworkStats(enriched.networkStats ?? null);
+  renderNetworkHealth(enriched);
   updateStaleBanner(enriched.updatedAt);
-
   const age = Date.now() - new Date(enriched.updatedAt).getTime();
   setStatus(enriched._isFallback ? Infinity : age);
-
   startRefreshTimer();
 }
 
-main().catch((error) => {
-  console.error(error);
-  const dot = $('#statusDot');
-  dot?.classList.add('is-offline');
+main().catch(err => {
+  console.error(err);
+  $('#statusDot')?.classList.add('is-offline');
   $('#sourceLabel').textContent = 'render error — check console';
 });

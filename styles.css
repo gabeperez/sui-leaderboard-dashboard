@@ -427,7 +427,42 @@ body::before {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Info cards ─────────────────────────────────────── */
+/* ── Highlighted metric card (finality) ─────────────── */
+
+.metric-card--highlight {
+  border-color: rgba(125, 211, 252, 0.2);
+  background: linear-gradient(135deg, rgba(125, 211, 252, 0.07), rgba(255,255,255,0.03));
+}
+
+.metric-card--highlight .metric-value {
+  color: #7dd3fc;
+}
+
+/* ── Fast finality indicator ────────────────────────── */
+
+.finality-fast {
+  color: #4ade80;
+}
+
+/* ── Category badges ────────────────────────────────── */
+
+.cat-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid color-mix(in srgb, var(--cat-color) 40%, transparent);
+  background: color-mix(in srgb, var(--cat-color) 12%, transparent);
+  color: var(--cat-color);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ── Info cards (kept for compatibility) ────────────── */
 
 .info-card {
   padding: 1rem 1.05rem;
@@ -438,13 +473,6 @@ body::before {
   color: #fff;
   font-size: 0.95rem;
   font-weight: 600;
-}
-
-.info-card code {
-  border-radius: 0.45rem;
-  background: rgba(15, 23, 42, 0.55);
-  padding: 0.1rem 0.35rem;
-  color: #dbeafe;
 }
 
 /* ── Loading states ─────────────────────────────────── */
