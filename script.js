@@ -341,6 +341,36 @@ function sliceByRange(arr, range) {
   return arr.filter(d => d.date >= cutoff);
 }
 
+/* ── Live chain comparison ──────────────────────────── */
+
+async function fetchSolanaTps() {
+  try {
+    const res = await fetch('https://api.mainnet-beta.solana.com', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getRecentPerformanceSamples', params: [5] }),
+    });
+    if (!res.ok) return null;
+    const { result } = await res.json();
+    if (!Array.isArray(result) || !result.length) return null;
+    // Average TPS across recent samples
+    const tps = result.reduce((s, r) => s + r.numTransactions / r.samplePeriodSecs, 0) / result.length;
+    return Math.round(tps);
+  } catch {
+    return null;
+  }
+}
+
+function renderChainComparison(suiTps) {
+  const suiEl = $('#suiLiveTps');
+  if (suiEl) suiEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
+
+  fetchSolanaTps().then(tps => {
+    const el = $('#solanaLiveTps');
+    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
+  });
+}
+
 function setDefiRange(range) {
   defiRange = range;
   document.querySelectorAll('.range-tab').forEach(el => {
@@ -652,6 +682,9 @@ function updateSummary(data, animate = true) {
   drawSparkline('sparkTx', pad(txVals, 6), '#60a5fa');
   drawSparkline('sparkWallets', pad(new Array(Math.min(wallets.length, 6)).fill(uniqueWallets / 6), 6), '#34d399');
   drawSparkline('sparkProtocols', pad(contractActs.slice(0, 6), 6), '#a78bfa');
+
+  // Update live chain comparison with Sui's current TPS
+  renderChainComparison(stats?.tps ?? null);
 }
 
 /* ── Network health panel ───────────────────────────── */

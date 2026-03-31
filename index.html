@@ -187,46 +187,66 @@
       <article class="dashboard-shell p-5 sm:p-6">
         <p class="metric-label">Total transactions <span class="info-tip" data-tip="Cumulative transaction block count since Sui mainnet genesis. Fetched live from the Sui full node via sui_getTotalTransactionBlocks.">ⓘ</span></p>
         <p class="metric-value" id="metricTotalTx">—</p>
-        <p class="metric-note">Cumulative since genesis</p>
-        <table class="chain-compare mt-4" aria-label="Chain comparison">
-          <thead>
-            <tr>
-              <th>Chain</th>
-              <th>Finality</th>
-              <th>Avg fee</th>
-              <th>Peak TPS</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="chain-sui">
-              <td><strong>Sui</strong></td>
-              <td class="finality-fast">~400 ms</td>
-              <td>$0.005</td>
-              <td>297k</td>
-            </tr>
-            <tr>
-              <td>Solana</td>
-              <td>~400 ms</td>
-              <td>$0.002</td>
-              <td>65k</td>
-            </tr>
-            <tr>
-              <td>Aptos</td>
-              <td>~900 ms</td>
-              <td>$0.001</td>
-              <td>160k</td>
-            </tr>
-            <tr>
-              <td>Ethereum</td>
-              <td>~12 min</td>
-              <td>$5–50</td>
-              <td>~15</td>
-            </tr>
-          </tbody>
-        </table>
+        <p class="metric-note">Cumulative since genesis · Sui only</p>
       </article>
 
       </div><!-- end grid -->
+    </section>
+
+    <!-- How Sui compares -->
+    <section class="mt-6" aria-label="Chain comparison">
+      <article class="dashboard-shell p-5 sm:p-6">
+        <div class="section-head mb-4">
+          <div>
+            <h2 class="section-title">
+              How Sui compares
+              <span class="info-tip" data-tip="TPS for Sui and Solana is fetched live. Ethereum and Aptos are stable enough to be static estimates. Finality and fees are representative averages.">ⓘ</span>
+            </h2>
+            <p class="section-subtitle">Live TPS where available · finality and fees are representative</p>
+          </div>
+        </div>
+        <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+          <table class="chain-compare chain-compare--full" aria-label="Chain comparison">
+            <thead>
+              <tr>
+                <th>Chain</th>
+                <th>Finality</th>
+                <th>Avg fee</th>
+                <th>
+                  TPS
+                  <span class="info-tip" data-tip="Sui and Solana show live transactions per second, refreshed every 30s. Ethereum and Aptos show typical values.">ⓘ</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="chain-sui">
+                <td><strong>Sui</strong></td>
+                <td class="finality-fast">~400 ms</td>
+                <td>$0.005</td>
+                <td><span id="suiLiveTps">—</span> <span class="live-badge">live</span></td>
+              </tr>
+              <tr>
+                <td>Solana</td>
+                <td>~400 ms</td>
+                <td>$0.002</td>
+                <td><span id="solanaLiveTps">—</span> <span class="live-badge">live</span></td>
+              </tr>
+              <tr>
+                <td>Aptos</td>
+                <td>~900 ms</td>
+                <td>$0.001</td>
+                <td>~10</td>
+              </tr>
+              <tr>
+                <td>Ethereum</td>
+                <td>~12 min</td>
+                <td>$5–50</td>
+                <td>~14</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
 
     <!-- Protocol activity + Power users -->
