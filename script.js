@@ -353,20 +353,87 @@ async function fetchSolanaTps() {
     if (!res.ok) return null;
     const { result } = await res.json();
     if (!Array.isArray(result) || !result.length) return null;
-    // Average TPS across recent samples
     const tps = result.reduce((s, r) => s + r.numTransactions / r.samplePeriodSecs, 0) / result.length;
     return Math.round(tps);
-  } catch {
-    return null;
-  }
+  } catch { return null; }
+}
+
+async function fetchEthereumTps() {
+  const RPC = 'https://cloudflare-eth.com';
+  try {
+    const numRes = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }),
+    });
+    const { result: latestHex } = await numRes.json();
+    const latest = parseInt(latestHex, 16);
+
+    // Batch fetch last 6 blocks (just tx hashes, not full tx objects)
+    const batchRes = await fetch(RPC, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(
+        Array.from({ length: 6 }, (_, i) => ({
+          jsonrpc: '2.0', id: i + 2,
+          method: 'eth_getBlockByNumber',
+          params: [`0x${(latest - i).toString(16)}`, false],
+        }))
+      ),
+    });
+    const blocks = (await batchRes.json())
+      .map(r => r.result)
+      .filter(Boolean)
+      .sort((a, b) => parseInt(b.number, 16) - parseInt(a.number, 16));
+
+    if (blocks.length < 2) return null;
+    const totalTx = blocks.reduce((s, b) => s + (b.transactions?.length ?? 0), 0);
+    const spanSec = parseInt(blocks[0].timestamp, 16) - parseInt(blocks[blocks.length - 1].timestamp, 16);
+    return spanSec > 0 ? parseFloat((totalTx / spanSec).toFixed(1)) : null;
+  } catch { return null; }
+}
+
+async function fetchAptosTps() {
+  const BASE = 'https://fullnode.mainnet.aptoslabs.com/v1';
+  try {
+    const ledger = await fetch(BASE).then(r => r.ok ? r.json() : null);
+    if (!ledger) return null;
+    const height = parseInt(ledger.block_height);
+
+    // Fetch last 6 blocks to compute TPS
+    const blocks = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        fetch(`${BASE}/blocks/by_height/${height - i}?with_transactions=false`)
+          .then(r => r.ok ? r.json() : null)
+      )
+    );
+    const valid = blocks.filter(Boolean);
+    if (valid.length < 2) return null;
+
+    // Each block covers [first_version, last_version] of the ledger (≈ transactions)
+    const totalTx = valid.reduce((s, b) =>
+      s + (parseInt(b.last_version) - parseInt(b.first_version)), 0);
+    // Aptos timestamps are in microseconds
+    const spanSec = (parseInt(valid[0].block_timestamp) - parseInt(valid[valid.length - 1].block_timestamp)) / 1e6;
+    return spanSec > 0 ? parseFloat((totalTx / spanSec).toFixed(1)) : null;
+  } catch { return null; }
 }
 
 function renderChainComparison(suiTps) {
   const suiEl = $('#suiLiveTps');
   if (suiEl) suiEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
 
+  // Fire all three in parallel — each updates its cell when it resolves
   fetchSolanaTps().then(tps => {
     const el = $('#solanaLiveTps');
+    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
+  });
+  fetchEthereumTps().then(tps => {
+    const el = $('#ethLiveTps');
+    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
+  });
+  fetchAptosTps().then(tps => {
+    const el = $('#aptosLiveTps');
     if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
   });
 }
