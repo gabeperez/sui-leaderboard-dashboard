@@ -42,10 +42,11 @@ async function rpc(method, params = []) {
 }
 
 async function fetchLiveData() {
-  // Two RPC calls, run in parallel
-  const [cpPage, sysState] = await Promise.all([
+  // Three RPC calls, run in parallel
+  const [cpPage, sysState, totalTxBlocks] = await Promise.all([
     rpc('sui_getCheckpoints', [null, 20, true]),
     rpc('suix_getLatestSuiSystemState'),
+    rpc('sui_getTotalTransactionBlocks'),
   ]);
 
   const cpData = cpPage?.data ?? [];
@@ -92,6 +93,7 @@ async function fetchLiveData() {
     networkStats: {
       epoch: sysState?.epoch != null ? parseInt(sysState.epoch) : null,
       validatorCount: sysState?.activeValidators?.length ?? 0,
+      totalTransactions: totalTxBlocks != null ? parseInt(totalTxBlocks) : null,
       avgFinalityMs,
       tps,
       totalTx: checkpoints.reduce((s, c) => s + c.txCount, 0),

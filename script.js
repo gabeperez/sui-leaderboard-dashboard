@@ -96,6 +96,14 @@ function formatDuration(seconds) {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
+function formatUSD(value) {
+  if (value == null || isNaN(value)) return '—';
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(0)}M`;
+  if (value >= 1e3) return `$${(value / 1e3).toFixed(0)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
 function normalizeData(raw) {
   const payload = raw?.data ?? raw ?? {};
   return {
@@ -286,6 +294,88 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
   const lx = w - p, ly = h - p - ((values[values.length-1] - min) / range) * (h - p * 2);
   ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2);
   ctx.fillStyle = color; ctx.fill();
+}
+
+/* ── DeFiLlama integration ──────────────────────────── */
+
+async function loadDefiLlamaData() {
+  const cutoff = Math.floor(Date.now() / 1000) - 30 * 86400;
+  try {
+    const [tvlRes, dexRes] = await Promise.allSettled([
+      fetch('https://api.llama.fi/v2/historicalChainTvl/Sui').then(r => r.ok ? r.json() : null),
+      fetch('https://api.llama.fi/overview/dexs/Sui?excludeTotalDataChart=false&excludeTotalDataChartBreakdown=true&dataType=dailyVolume')
+        .then(r => r.ok ? r.json() : null),
+    ]);
+    const tvlRaw = tvlRes.status === 'fulfilled' ? tvlRes.value : null;
+    const dexRaw = dexRes.status === 'fulfilled' ? dexRes.value : null;
+
+    const tvl30d = Array.isArray(tvlRaw)
+      ? tvlRaw.filter(d => d.date >= cutoff).map(d => ({ date: d.date * 1000, value: d.tvl }))
+      : [];
+    const dex30d = Array.isArray(dexRaw?.totalDataChart)
+      ? dexRaw.totalDataChart.filter(([d]) => d >= cutoff).map(([d, v]) => ({ date: d * 1000, value: v }))
+      : [];
+
+    return {
+      tvl30d,
+      dex30d,
+      currentTvl: tvl30d.at(-1)?.value ?? null,
+      total30dDexVol: dex30d.reduce((s, d) => s + d.value, 0),
+    };
+  } catch {
+    return { tvl30d: [], dex30d: [], currentTvl: null, total30dDexVol: 0 };
+  }
+}
+
+function renderTrendChart(containerId, data, color) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (data.length < 2) { container.innerHTML = ''; return; }
+
+  const values = data.map(d => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const W = 100, H = 40;
+
+  const pts = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - 4 - ((d.value - min) / range) * (H - 8);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(' ');
+  const area = `0,${H} ${pts} ${W},${H}`;
+  const uid = containerId.replace(/[^a-z0-9]/gi, '');
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"
+    xmlns="http://www.w3.org/2000/svg" class="trend-chart-svg">
+    <defs>
+      <linearGradient id="tg-${uid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon points="${area}" fill="url(#tg-${uid})"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2"
+      stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function renderDefiSection(defi, totalTx) {
+  const tvlEl = $('#metricTVL');
+  if (tvlEl) tvlEl.textContent = formatUSD(defi.currentTvl);
+  renderTrendChart('chartTVL', defi.tvl30d, '#7dd3fc');
+
+  const dexEl = $('#metricDexVol');
+  if (dexEl) dexEl.textContent = formatUSD(defi.total30dDexVol);
+  renderTrendChart('chartDexVol', defi.dex30d, '#34d399');
+
+  const txEl = $('#metricTotalTx');
+  if (txEl && totalTx) {
+    const billions = totalTx / 1e9;
+    txEl.textContent = billions >= 1
+      ? `${billions.toFixed(2)}B`
+      : `${(totalTx / 1e6).toFixed(0)}M`;
+  }
 }
 
 /* ── Rank helpers ───────────────────────────────────── */
@@ -661,16 +751,31 @@ function updateCountdownDisplay() {
   if (el) el.textContent = `${countdown}s`;
 }
 
+async function manualRefresh() {
+  const btn  = $('#refreshBtn');
+  const icon = $('#refreshIcon');
+  if (btn?.disabled) return;
+  if (btn)  btn.disabled = true;
+  if (icon) icon.classList.add('is-spinning');
+  try {
+    await refresh();
+  } finally {
+    if (icon) icon.classList.remove('is-spinning');
+    if (btn)  btn.disabled = false;
+  }
+}
+
 async function refresh() {
   countdown = REFRESH_INTERVAL;
   updateCountdownDisplay();
-  const data = await loadData();
+  const [data, defi] = await Promise.all([loadData(), loadDefiLlamaData()]);
   const enriched = await enrichData(data);
   updateSummary(enriched, true);
   renderCheckpoints(enriched.checkpoints || []);
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
   renderNetworkHealth(enriched);
+  renderDefiSection(defi, enriched.networkStats?.totalTransactions ?? null);
   updateStaleBanner(enriched);
   setStatus(enriched);
 }
@@ -681,13 +786,14 @@ document.addEventListener('visibilitychange', () => { isPageVisible = !document.
 
 async function main() {
   renderLoading();
-  const data = await loadData();
+  const [data, defi] = await Promise.all([loadData(), loadDefiLlamaData()]);
   const enriched = await enrichData(data);
   updateSummary(enriched, true);
   renderCheckpoints(enriched.checkpoints || []);
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
   renderNetworkHealth(enriched);
+  renderDefiSection(defi, enriched.networkStats?.totalTransactions ?? null);
   updateStaleBanner(enriched);
   setStatus(enriched);
   startRefreshTimer();

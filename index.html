@@ -42,10 +42,10 @@
             <span class="mini-stat-label">Network</span>
             <span class="mini-stat-value flex items-center gap-2">
               Sui mainnet
-              <span class="refresh-badge" title="Auto-refresh countdown">
-                <svg class="refresh-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 8a5.5 5.5 0 019.3-4M13.5 8a5.5 5.5 0 01-9.3 4"/><path d="M12 1v3.5h-3.5M4 15v-3.5h3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <button class="refresh-badge" id="refreshBtn" onclick="manualRefresh()" title="Click to refresh now">
+                <svg class="refresh-icon" id="refreshIcon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 8a5.5 5.5 0 019.3-4M13.5 8a5.5 5.5 0 01-9.3 4"/><path d="M12 1v3.5h-3.5M4 15v-3.5h3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span id="refreshCountdown">30s</span>
-              </span>
+              </button>
             </span>
           </div>
         </div>
@@ -130,6 +130,69 @@
 
     <!-- Stale data warning -->
     <div id="staleBanner" class="stale-banner mt-4" hidden></div>
+
+    <!-- Network scale: TVL, DEX volume, total txs + chain comparison -->
+    <section class="mt-6 grid gap-6 xl:grid-cols-3" aria-label="Network scale">
+
+      <article class="dashboard-shell p-5 sm:p-6">
+        <p class="metric-label">Total Value Locked</p>
+        <p class="metric-value" id="metricTVL">—</p>
+        <p class="metric-note">DeFiLlama · live</p>
+        <div class="mt-3 trend-chart-wrap" id="chartTVL"></div>
+        <p class="mt-2 text-xs text-slate-500">30-day trend</p>
+      </article>
+
+      <article class="dashboard-shell p-5 sm:p-6">
+        <p class="metric-label">30d DEX Volume</p>
+        <p class="metric-value" id="metricDexVol">—</p>
+        <p class="metric-note">All Sui DEXes · DeFiLlama</p>
+        <div class="mt-3 trend-chart-wrap" id="chartDexVol"></div>
+        <p class="mt-2 text-xs text-slate-500">30-day trend</p>
+      </article>
+
+      <article class="dashboard-shell p-5 sm:p-6">
+        <p class="metric-label">Total transactions</p>
+        <p class="metric-value" id="metricTotalTx">—</p>
+        <p class="metric-note">Cumulative since genesis</p>
+        <table class="chain-compare mt-4" aria-label="Chain comparison">
+          <thead>
+            <tr>
+              <th>Chain</th>
+              <th>Finality</th>
+              <th>Avg fee</th>
+              <th>Peak TPS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="chain-sui">
+              <td><strong>Sui</strong></td>
+              <td class="finality-fast">~400 ms</td>
+              <td>$0.005</td>
+              <td>297k</td>
+            </tr>
+            <tr>
+              <td>Solana</td>
+              <td>~400 ms</td>
+              <td>$0.002</td>
+              <td>65k</td>
+            </tr>
+            <tr>
+              <td>Aptos</td>
+              <td>~900 ms</td>
+              <td>$0.001</td>
+              <td>160k</td>
+            </tr>
+            <tr>
+              <td>Ethereum</td>
+              <td>~12 min</td>
+              <td>$5–50</td>
+              <td>~15</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+    </section>
 
     <!-- Protocol activity + Power users -->
     <section class="mt-6 grid gap-6 xl:grid-cols-2">

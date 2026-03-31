@@ -82,13 +82,30 @@ body::before {
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 0.7rem;
   color: rgba(148, 163, 184, 0.9);
-  cursor: default;
+  cursor: pointer;
   font-variant-numeric: tabular-nums;
+  transition: background 0.15s, color 0.15s;
+}
+.refresh-badge:hover {
+  background: rgba(125, 211, 252, 0.12);
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.2);
+}
+.refresh-badge:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .refresh-icon {
   width: 0.75rem;
   height: 0.75rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.refresh-icon.is-spinning {
+  animation: spin 0.7s linear infinite;
 }
 
 /* ── Mini stats & metric cards ──────────────────────── */
@@ -581,6 +598,59 @@ body::before {
   background: rgba(251, 191, 36, 0.07);
   color: #fde68a;
   font-size: 0.82rem;
+}
+
+/* ── DeFi trend charts ──────────────────────────────── */
+
+.trend-chart-wrap {
+  width: 100%;
+  height: 3rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+
+.trend-chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Chain comparison table ─────────────────────────── */
+
+.chain-compare {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.chain-compare th {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  color: rgba(148, 163, 184, 0.7);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chain-compare td {
+  padding: 0.45rem 0.5rem;
+  color: rgba(203, 213, 225, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.chain-compare tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.chain-compare .chain-sui td {
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.chain-compare .chain-sui td:first-child {
+  color: #7dd3fc;
 }
 
 /* ── Pulse background (loading) ─────────────────────── */
