@@ -143,11 +143,29 @@
           <h2 class="section-title">Network scale</h2>
           <p class="section-subtitle">Historical trends from DeFiLlama · all-time totals from Sui RPC</p>
         </div>
-        <div class="range-tabs" role="group" aria-label="Time range">
-          <button class="range-tab" data-range="7d"  onclick="setDefiRange('7d')">7d</button>
-          <button class="range-tab range-tab--active" data-range="30d" onclick="setDefiRange('30d')">30d</button>
-          <button class="range-tab" data-range="90d" onclick="setDefiRange('90d')">90d</button>
-          <button class="range-tab" data-range="all" onclick="setDefiRange('all')">All</button>
+        <div class="range-tabs-wrap">
+          <div class="range-tabs" role="group" aria-label="Time range">
+            <button class="range-tab" data-range="1d"  onclick="setDefiRange('1d')">24h</button>
+            <button class="range-tab" data-range="7d"  onclick="setDefiRange('7d')">7d</button>
+            <button class="range-tab range-tab--active" data-range="30d" onclick="setDefiRange('30d')">30d</button>
+            <button class="range-tab" data-range="90d" onclick="setDefiRange('90d')">90d</button>
+            <button class="range-tab" data-range="all" onclick="setDefiRange('all')">All</button>
+            <button class="range-tab" data-range="custom" onclick="setDefiRange('custom')">Custom</button>
+          </div>
+          <div id="customRangePicker" class="range-picker-popover" hidden>
+            <div class="range-picker-fields">
+              <label class="range-picker-label">
+                From
+                <input type="date" id="customFrom" class="range-picker-input" />
+              </label>
+              <span class="range-picker-sep">→</span>
+              <label class="range-picker-label">
+                To
+                <input type="date" id="customTo" class="range-picker-input" />
+              </label>
+            </div>
+            <button class="range-picker-apply" onclick="applyCustomRange()">Apply</button>
+          </div>
         </div>
       </div>
       <div class="grid gap-6 xl:grid-cols-3">

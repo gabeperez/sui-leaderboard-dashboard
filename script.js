@@ -67,6 +67,8 @@ let isPageVisible = true;
 let defiRange = '30d';
 let defiCache = null;
 let defiTotalTxCache = null;
+let customFrom = null;
+let customTo = null;
 
 /* ── Utilities ──────────────────────────────────────── */
 
@@ -325,10 +327,14 @@ async function loadDefiLlamaData() {
   }
 }
 
-const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90, 'all': Infinity };
-const RANGE_LABELS = { '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', 'all': 'All time' };
+const RANGE_DAYS = { '1d': 1, '7d': 7, '30d': 30, '90d': 90, 'all': Infinity, 'custom': null };
+const RANGE_LABELS = { '1d': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', 'all': 'All time', 'custom': 'Custom range' };
 
 function sliceByRange(arr, range) {
+  if (range === 'custom') {
+    if (!customFrom || !customTo) return arr.slice(-30); // fallback to 30d if not set
+    return arr.filter(d => d.date >= customFrom && d.date <= customTo);
+  }
   const days = RANGE_DAYS[range] ?? 30;
   if (days === Infinity) return arr;
   const cutoff = Date.now() - days * 86400 * 1000;
@@ -340,6 +346,27 @@ function setDefiRange(range) {
   document.querySelectorAll('.range-tab').forEach(el => {
     el.classList.toggle('range-tab--active', el.dataset.range === range);
   });
+  const picker = $('#customRangePicker');
+  if (picker) {
+    picker.hidden = range !== 'custom';
+    if (range === 'custom') {
+      // Pre-fill with sensible defaults the first time
+      const toEl = $('#customTo'), fromEl = $('#customFrom');
+      if (toEl && !toEl.value) toEl.value = new Date().toISOString().slice(0, 10);
+      if (fromEl && !fromEl.value) {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        fromEl.value = d.toISOString().slice(0, 10);
+      }
+    }
+  }
+  if (range !== 'custom' && defiCache) renderDefiSection(defiCache, defiTotalTxCache);
+}
+
+function applyCustomRange() {
+  const fromEl = $('#customFrom'), toEl = $('#customTo');
+  if (!fromEl?.value || !toEl?.value) return;
+  customFrom = new Date(fromEl.value).getTime();
+  customTo   = new Date(toEl.value).getTime() + 86400 * 1000 - 1; // end of that day
   if (defiCache) renderDefiSection(defiCache, defiTotalTxCache);
 }
 
