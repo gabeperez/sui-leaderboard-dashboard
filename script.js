@@ -809,6 +809,59 @@ async function refresh() {
 
 document.addEventListener('visibilitychange', () => { isPageVisible = !document.hidden; });
 
+/* ── Tooltip system (body-appended, escapes overflow) ── */
+
+(function () {
+  let bubble = null;
+
+  function getOrCreateBubble() {
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'tooltip-bubble';
+      document.body.appendChild(bubble);
+    }
+    return bubble;
+  }
+
+  function showTip(el) {
+    const tip = el.getAttribute('data-tip');
+    if (!tip) return;
+    const b = getOrCreateBubble();
+    b.textContent = tip;
+    b.style.opacity = '0';
+    b.style.display = 'block';
+
+    const rect = el.getBoundingClientRect();
+    const bw = b.offsetWidth || 220;
+    const bh = b.offsetHeight || 60;
+    const gap = 8;
+
+    // prefer above, fall back to below
+    let top = rect.top - bh - gap;
+    if (top < 8) top = rect.bottom + gap;
+
+    let left = rect.left + rect.width / 2 - bw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - bw - 8));
+
+    b.style.top  = `${top}px`;
+    b.style.left = `${left}px`;
+    requestAnimationFrame(() => { b.style.opacity = '1'; });
+  }
+
+  function hideTip() {
+    if (bubble) { bubble.style.opacity = '0'; }
+  }
+
+  document.addEventListener('mouseover', e => {
+    const tip = e.target.closest('.info-tip');
+    if (tip) showTip(tip);
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest?.('.info-tip')) hideTip();
+  });
+  document.addEventListener('scroll', hideTip, true);
+})();
+
 /* ── Main ───────────────────────────────────────────── */
 
 async function main() {

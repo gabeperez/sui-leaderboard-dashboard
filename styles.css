@@ -615,7 +615,6 @@ body::before {
   font-style: normal;
   font-weight: 600;
   cursor: help;
-  position: relative;
   vertical-align: middle;
   margin-left: 0.25rem;
   transition: background 0.15s, color 0.15s;
@@ -627,12 +626,10 @@ body::before {
   color: #7dd3fc;
 }
 
-.info-tip::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 0.5rem);
-  left: 50%;
-  transform: translateX(-50%);
+/* Tooltip bubble rendered by JS into <body> so it escapes overflow:hidden */
+.tooltip-bubble {
+  position: fixed;
+  z-index: 9999;
   background: #1a2840;
   border: 1px solid rgba(125, 211, 252, 0.18);
   border-radius: 0.65rem;
@@ -641,20 +638,11 @@ body::before {
   font-weight: 400;
   color: #cbd5e1;
   line-height: 1.5;
-  white-space: normal;
-  width: max-content;
   max-width: 220px;
   pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   opacity: 0;
-  transition: opacity 0.15s;
-  z-index: 200;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.info-tip:hover::after {
-  opacity: 1;
+  transition: opacity 0.12s;
 }
 
 /* ── View-all button ────────────────────────────────── */
