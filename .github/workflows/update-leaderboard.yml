@@ -1,0 +1,74 @@
+name: Update Leaderboard
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
+  workflow_dispatch:          # manual trigger from GitHub UI
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # needed to push leaderboard.json back
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install jun dependencies
+        run: cd jun && bun install
+
+      - name: Configure jun for mainnet
+        run: |
+          mkdir -p ~/.jun
+          cat > ~/.jun/config.yml <<'EOF'
+          active_env: mainnet
+          envs:
+            mainnet:
+              grpc_url: https://fullnode.mainnet.sui.io
+              archive_url: https://checkpoints.mainnet.sui.io
+          EOF
+
+      - name: Get latest checkpoint
+        id: seq
+        run: |
+          LATEST=$(curl -sf -X POST https://fullnode.mainnet.sui.io:443 \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"sui_getLatestCheckpointSequenceNumber","params":[]}' \
+            | jq -r '.result')
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Failed to get latest checkpoint from RPC"
+            exit 1
+          fi
+          FROM=$(( LATEST - 999 ))
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          echo "from=$FROM"     >> $GITHUB_OUTPUT
+          echo "Latest checkpoint: $LATEST (fetching from $FROM)"
+
+      - name: Fetch 1000 checkpoints via jun replay
+        run: |
+          bun jun/src/cli.ts replay \
+            --from-checkpoint ${{ steps.seq.outputs.from }} \
+            --count 1000 \
+            --include events \
+            --concurrency 32 \
+            --output /tmp/live.sqlite
+        timeout-minutes: 8
+
+      - name: Generate leaderboard.json
+        run: bun generate-leaderboard.ts /tmp/live.sqlite leaderboard.json
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add leaderboard.json
+          # Only commit if the file actually changed
+          git diff --staged --quiet && echo "No changes, skipping commit" && exit 0
+          git commit -m "data: leaderboard refresh $(date -u '+%H:%M UTC')"
+          git push
