@@ -56,28 +56,28 @@
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key metrics">
 
       <article class="metric-card metric-card--highlight">
-        <p class="metric-label">Avg finality</p>
+        <p class="metric-label">Avg finality <span class="info-tip" data-tip="Time between consecutive checkpoints. Sui's design goal is sub-400ms — faster than you can blink, and dramatically faster than any EVM chain.">ⓘ</span></p>
         <p class="metric-value" id="metricFinality">—</p>
         <p class="metric-note" id="metricFinalityNote">Sui's core advantage</p>
         <canvas class="sparkline" id="sparkFinality" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Transactions</p>
+        <p class="metric-label">Transactions <span class="info-tip" data-tip="Total transaction blocks confirmed in the current leaderboard window (~4–5 minutes of Sui activity indexed by jun).">ⓘ</span></p>
         <p class="metric-value" id="metricTx">—</p>
         <p class="metric-note" id="metricTxNote">In the current window</p>
         <canvas class="sparkline" id="sparkTx" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Unique wallets</p>
+        <p class="metric-label">Unique wallets <span class="info-tip" data-tip="Distinct sender addresses that submitted at least one transaction in the current jun indexer window.">ⓘ</span></p>
         <p class="metric-value" id="metricWallets">—</p>
         <p class="metric-note" id="metricWalletsNote">Active senders</p>
         <canvas class="sparkline" id="sparkWallets" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Active protocols</p>
+        <p class="metric-label">Active protocols <span class="info-tip" data-tip="Number of distinct smart contract packages that emitted at least one on-chain event in the current window. Events are the primary signal of real protocol usage.">ⓘ</span></p>
         <p class="metric-value" id="metricProtocols">—</p>
         <p class="metric-note" id="metricProtocolsNote">Competing for activity</p>
         <canvas class="sparkline" id="sparkProtocols" height="32"></canvas>
@@ -91,12 +91,15 @@
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Checkpoint stream</h2>
-            <p class="section-subtitle">Each row is one Sui checkpoint — watch the finality column.</p>
+            <h2 class="section-title">
+              Checkpoint stream
+              <span class="info-tip" data-tip="Sui checkpoints are finalized batches of transactions agreed upon by the validator set. The Finality column shows the gap between consecutive checkpoints — Sui's target is sub-400ms.">ⓘ</span>
+            </h2>
+            <p class="section-subtitle">Latest 5 checkpoints. Finality = time since the previous one.</p>
           </div>
           <span class="section-badge" id="checkpointWindow">—</span>
         </div>
-        <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+        <div class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid checkpoint-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Checkpoint</span>
             <span>Txs</span>
@@ -105,25 +108,27 @@
           </div>
           <div id="checkpointList" class="divide-y divide-white/8"></div>
         </div>
+        <button class="view-all-btn mt-3" id="viewAllCheckpointsBtn" onclick="openCheckpointModal()">
+          View all 20 checkpoints →
+        </button>
       </article>
 
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Network health</h2>
-            <p class="section-subtitle">Epoch, validators, and window stats from this export.</p>
+            <h2 class="section-title">
+              Network health
+              <span class="info-tip" data-tip="Live data from suix_getLatestSuiSystemState. Epoch advances roughly every 24 hours. Validators must reach 2/3+ stake-weighted quorum to finalize each checkpoint.">ⓘ</span>
+            </h2>
+            <p class="section-subtitle">Live epoch, validators, and window stats.</p>
           </div>
           <span class="section-badge badge-live">mainnet</span>
         </div>
-        <div id="networkHealthGrid" class="mt-5 net-stat-grid">
+        <div id="networkHealthGrid" class="mt-4 net-stat-grid">
           <div class="net-stat-item pulse-bg" style="grid-column:span 2">
             <span class="net-stat-label">Loading…</span>
           </div>
         </div>
-        <p class="mt-5 text-xs leading-5 text-slate-400">
-          Epoch and validator count from <code class="code-chip">suix_getLatestSuiSystemState</code>
-          fetched at export time. Finality computed from jun checkpoint timestamps.
-        </p>
       </article>
 
     </section>
@@ -135,7 +140,7 @@
     <section class="mt-6 grid gap-6 xl:grid-cols-3" aria-label="Network scale">
 
       <article class="dashboard-shell p-5 sm:p-6">
-        <p class="metric-label">Total Value Locked</p>
+        <p class="metric-label">Total Value Locked <span class="info-tip" data-tip="USD value of all assets deposited into DeFi protocols on Sui — lending pools, DEX liquidity, vaults, etc. Sourced live from DeFiLlama.">ⓘ</span></p>
         <p class="metric-value" id="metricTVL">—</p>
         <p class="metric-note">DeFiLlama · live</p>
         <div class="mt-3 trend-chart-wrap" id="chartTVL"></div>
@@ -143,7 +148,7 @@
       </article>
 
       <article class="dashboard-shell p-5 sm:p-6">
-        <p class="metric-label">30d DEX Volume</p>
+        <p class="metric-label">30d DEX Volume <span class="info-tip" data-tip="Total trading volume across all decentralized exchanges on Sui over the past 30 days, aggregated from DeFiLlama. Includes Cetus, Turbos, DeepBook, and others.">ⓘ</span></p>
         <p class="metric-value" id="metricDexVol">—</p>
         <p class="metric-note">All Sui DEXes · DeFiLlama</p>
         <div class="mt-3 trend-chart-wrap" id="chartDexVol"></div>
@@ -151,7 +156,7 @@
       </article>
 
       <article class="dashboard-shell p-5 sm:p-6">
-        <p class="metric-label">Total transactions</p>
+        <p class="metric-label">Total transactions <span class="info-tip" data-tip="Cumulative transaction block count since Sui mainnet genesis. Fetched live from the Sui full node via sui_getTotalTransactionBlocks.">ⓘ</span></p>
         <p class="metric-value" id="metricTotalTx">—</p>
         <p class="metric-note">Cumulative since genesis</p>
         <table class="chain-compare mt-4" aria-label="Chain comparison">
@@ -200,8 +205,11 @@
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Protocol activity</h2>
-            <p class="section-subtitle">Ranked by on-chain event count in the leaderboard window.</p>
+            <h2 class="section-title">
+              Protocol activity
+              <span class="info-tip" data-tip="Ranked by on-chain event count. Move modules emit events when users interact — more events = more real usage. Refreshed every 15 minutes by jun indexing the last 1,000 checkpoints (~4–5 min of chain time).">ⓘ</span>
+            </h2>
+            <p class="section-subtitle">Ranked by event count · last 1,000 checkpoints.</p>
           </div>
           <span class="section-badge" id="contractMeta">Loading…</span>
         </div>
@@ -218,7 +226,10 @@
       <article class="dashboard-shell p-5 sm:p-6">
         <div class="section-head">
           <div>
-            <h2 class="section-title">Power users</h2>
+            <h2 class="section-title">
+              Power users
+              <span class="info-tip" data-tip="Wallet addresses ranked by number of transaction blocks sent in the current window. High-frequency traders, bots, and active DeFi users show up here. Click any address to view it on SuiScan.">ⓘ</span>
+            </h2>
             <p class="section-subtitle">Most active senders in the leaderboard window.</p>
           </div>
           <span class="section-badge" id="walletMeta">Loading…</span>
@@ -234,6 +245,28 @@
       </article>
 
     </section>
+
+    <!-- Checkpoint modal -->
+    <div id="checkpointModal" class="modal-overlay" hidden aria-modal="true" role="dialog" aria-label="Full checkpoint stream">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <h2 class="section-title">Checkpoint stream</h2>
+            <p class="section-subtitle">Last 20 checkpoints · live from Sui RPC</p>
+          </div>
+          <button class="modal-close" onclick="closeCheckpointModal()" aria-label="Close">✕</button>
+        </div>
+        <div class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+          <div class="grid checkpoint-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Checkpoint</span>
+            <span>Txs</span>
+            <span>Events</span>
+            <span>Finality</span>
+          </div>
+          <div id="checkpointModalList" class="divide-y divide-white/8"></div>
+        </div>
+      </div>
+    </div>
 
     <footer class="mt-6 flex flex-col gap-2 border-t border-white/10 pt-4 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
       <p>Powered by <a href="https://github.com/unconfirmedlabs/jun" target="_blank" rel="noopener noreferrer" class="ext-link">jun</a> · Sui mainnet indexer</p>

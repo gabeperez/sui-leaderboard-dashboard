@@ -611,15 +611,39 @@ function renderNetworkHealth(data) {
   `;
 }
 
+/* ── Checkpoint modal ───────────────────────────────── */
+
+function openCheckpointModal() {
+  const modal = $('#checkpointModal');
+  if (modal) { modal.hidden = false; document.body.style.overflow = 'hidden'; }
+}
+
+function closeCheckpointModal() {
+  const modal = $('#checkpointModal');
+  if (modal) { modal.hidden = true; document.body.style.overflow = ''; }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCheckpointModal(); });
+document.addEventListener('click', e => {
+  if (e.target?.id === 'checkpointModal') closeCheckpointModal();
+});
+
 /* ── Checkpoint stream ──────────────────────────────── */
 
 function renderCheckpoints(checkpoints) {
   const list = $('#checkpointList');
+  const modalList = $('#checkpointModalList');
+  const btn = $('#viewAllCheckpointsBtn');
+
   if (!checkpoints.length) {
-    list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-slate-400">No checkpoint data — run generate-leaderboard.ts.</div>`;
+    if (list) list.innerHTML = `<div class="px-4 py-8 text-center text-sm text-slate-400">No checkpoint data — run generate-leaderboard.ts.</div>`;
+    if (btn) btn.hidden = true;
     return;
   }
-  list.innerHTML = checkpoints.map((item, i) => {
+
+  if (btn) btn.hidden = false;
+
+  const buildRow = (item, i) => {
     const seq = item.checkpoint ?? item.height ?? item.id;
     const finality = item.finalitySeconds != null
       ? `${(item.finalitySeconds * 1000).toFixed(0)}ms` : '—';
@@ -644,7 +668,10 @@ function renderCheckpoints(checkpoints) {
         <div class="row-subtitle">finality</div>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  if (list) list.innerHTML = checkpoints.slice(0, 5).map(buildRow).join('');
+  if (modalList) modalList.innerHTML = checkpoints.map(buildRow).join('');
 }
 
 /* ── Protocol activity ──────────────────────────────── */
