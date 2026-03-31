@@ -317,29 +317,42 @@ function copyButton(text) {
 
 /* ── Status ─────────────────────────────────────────── */
 
-function setStatus(ageMs) {
+function setStatus(data) {
   const dot = $('#statusDot'), text = $('#statusText');
   dot.classList.remove('is-live', 'is-stale', 'is-offline');
-  if (ageMs < 5 * 60 * 1000) {
+
+  if (data._liveOk) {
     dot.classList.add('is-live');
-    text.textContent = 'Live · jun-indexed Sui mainnet';
-  } else if (ageMs < 60 * 60 * 1000) {
+    const indexedAge = data._indexedAt
+      ? Date.now() - new Date(data._indexedAt).getTime()
+      : null;
+    const indexedStr = indexedAge
+      ? ` · protocols ${timeAgo(new Date(data._indexedAt))}`
+      : '';
+    text.textContent = `Live checkpoints${indexedStr}`;
+  } else if (data._indexedAt) {
+    const age = Date.now() - new Date(data._indexedAt).getTime();
     dot.classList.add('is-stale');
-    text.textContent = `Stale · updated ${timeAgo(Date.now() - ageMs)}`;
+    text.textContent = `Checkpoints unavailable · data from ${timeAgo(new Date(data._indexedAt))}`;
   } else {
     dot.classList.add('is-offline');
-    text.textContent = `Outdated · run generate-leaderboard.ts`;
+    text.textContent = 'No data — deploy leaderboard.json and check /api/leaderboard';
   }
 }
 
 /* ── Stale banner ───────────────────────────────────── */
 
-function updateStaleBanner(updatedAt) {
+function updateStaleBanner(data) {
   const banner = $('#staleBanner');
   if (!banner) return;
-  const age = Date.now() - new Date(updatedAt).getTime();
+  if (!data._indexedAt) {
+    banner.textContent = 'Protocol & wallet data not yet available — run generate-leaderboard.ts to populate.';
+    banner.hidden = false;
+    return;
+  }
+  const age = Date.now() - new Date(data._indexedAt).getTime();
   if (age > 3600000) {
-    banner.textContent = `Data is ${Math.floor(age / 3600000)}h old — re-run generate-leaderboard.ts and redeploy leaderboard.json.`;
+    banner.textContent = `Protocol & wallet data is ${Math.floor(age / 3600000)}h old — GitHub Actions should refresh this automatically.`;
     banner.hidden = false;
   } else {
     banner.hidden = true;
@@ -349,11 +362,30 @@ function updateStaleBanner(updatedAt) {
 /* ── Data loading ───────────────────────────────────── */
 
 async function loadData() {
-  try {
-    const r = await fetch(DATA_SOURCE, { cache: 'no-store' });
-    if (r.ok) return normalizeData(await r.json());
-  } catch (_) {}
-  return { ...SAMPLE_DATA, _isFallback: true };
+  // Live: checkpoints + network stats from the edge function (always fresh)
+  // Indexed: topContracts + activeWallets from leaderboard.json (updated by jun/GitHub Actions)
+  const [liveResult, indexedResult] = await Promise.allSettled([
+    fetch('/api/leaderboard').then(r => r.ok ? r.json() : Promise.reject(r.status)),
+    fetch(DATA_SOURCE, { cache: 'no-store' }).then(r => r.ok ? r.json() : null),
+  ]);
+
+  const live    = liveResult.status    === 'fulfilled' ? liveResult.value    : null;
+  const indexed = indexedResult.status === 'fulfilled' ? indexedResult.value : null;
+  const norm    = indexed ? normalizeData(indexed) : null;
+
+  return {
+    source:       live ? 'sui rpc · live'   : (norm?.source || 'sample data'),
+    updatedAt:    norm?.updatedAt            || new Date().toISOString(),
+    window:       norm?.window               || (live ? '20 checkpoints' : '—'),
+    // Live takes priority for checkpoints + network stats
+    networkStats: live?.networkStats         || norm?.networkStats || null,
+    checkpoints:  live?.checkpoints          || norm?.checkpoints  || [],
+    // Indexed source for aggregated data — requires jun
+    topContracts: norm?.topContracts         || [],
+    activeWallets:norm?.activeWallets        || [],
+    _liveOk:      !!live,
+    _indexedAt:   norm?.updatedAt            || null,
+  };
 }
 
 /* ── Loading skeleton ───────────────────────────────── */
@@ -639,9 +671,8 @@ async function refresh() {
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
   renderNetworkHealth(enriched);
-  updateStaleBanner(enriched.updatedAt);
-  const age = Date.now() - new Date(enriched.updatedAt).getTime();
-  setStatus(enriched._isFallback ? Infinity : age);
+  updateStaleBanner(enriched);
+  setStatus(enriched);
 }
 
 document.addEventListener('visibilitychange', () => { isPageVisible = !document.hidden; });
@@ -657,9 +688,8 @@ async function main() {
   renderContracts(enriched.topContracts || []);
   renderWallets(enriched.activeWallets || []);
   renderNetworkHealth(enriched);
-  updateStaleBanner(enriched.updatedAt);
-  const age = Date.now() - new Date(enriched.updatedAt).getTime();
-  setStatus(enriched._isFallback ? Infinity : age);
+  updateStaleBanner(enriched);
+  setStatus(enriched);
   startRefreshTimer();
 }
 

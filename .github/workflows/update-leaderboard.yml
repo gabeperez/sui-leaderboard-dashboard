@@ -1,8 +1,14 @@
 name: Update Leaderboard
 
+# Checkpoint stream and network stats are served live by the Cloudflare
+# Pages Function at /api/leaderboard — no Actions needed for those.
+#
+# This job only refreshes topContracts + activeWallets in leaderboard.json,
+# which requires running jun to aggregate events across many checkpoints.
+
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 5 minutes
+    - cron: '*/15 * * * *'  # every 15 minutes is plenty for protocol/wallet rankings
   workflow_dispatch:          # manual trigger from GitHub UI
 
 jobs:
