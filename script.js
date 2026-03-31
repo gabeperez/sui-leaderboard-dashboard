@@ -343,81 +343,6 @@ function sliceByRange(arr, range) {
 
 /* ── Live chain comparison ──────────────────────────── */
 
-async function fetchSolanaTps() {
-  try {
-    const res = await fetch('https://api.mainnet-beta.solana.com', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getRecentPerformanceSamples', params: [5] }),
-    });
-    if (!res.ok) return null;
-    const { result } = await res.json();
-    if (!Array.isArray(result) || !result.length) return null;
-    const tps = result.reduce((s, r) => s + r.numTransactions / r.samplePeriodSecs, 0) / result.length;
-    return Math.round(tps);
-  } catch { return null; }
-}
-
-async function fetchEthereumTps() {
-  const RPC = 'https://cloudflare-eth.com';
-  try {
-    const numRes = await fetch(RPC, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }),
-    });
-    const { result: latestHex } = await numRes.json();
-    const latest = parseInt(latestHex, 16);
-
-    // Batch fetch last 6 blocks (just tx hashes, not full tx objects)
-    const batchRes = await fetch(RPC, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(
-        Array.from({ length: 6 }, (_, i) => ({
-          jsonrpc: '2.0', id: i + 2,
-          method: 'eth_getBlockByNumber',
-          params: [`0x${(latest - i).toString(16)}`, false],
-        }))
-      ),
-    });
-    const blocks = (await batchRes.json())
-      .map(r => r.result)
-      .filter(Boolean)
-      .sort((a, b) => parseInt(b.number, 16) - parseInt(a.number, 16));
-
-    if (blocks.length < 2) return null;
-    const totalTx = blocks.reduce((s, b) => s + (b.transactions?.length ?? 0), 0);
-    const spanSec = parseInt(blocks[0].timestamp, 16) - parseInt(blocks[blocks.length - 1].timestamp, 16);
-    return spanSec > 0 ? parseFloat((totalTx / spanSec).toFixed(1)) : null;
-  } catch { return null; }
-}
-
-async function fetchAptosTps() {
-  const BASE = 'https://fullnode.mainnet.aptoslabs.com/v1';
-  try {
-    const ledger = await fetch(BASE).then(r => r.ok ? r.json() : null);
-    if (!ledger) return null;
-    const height = parseInt(ledger.block_height);
-
-    // Fetch last 6 blocks to compute TPS
-    const blocks = await Promise.all(
-      Array.from({ length: 6 }, (_, i) =>
-        fetch(`${BASE}/blocks/by_height/${height - i}?with_transactions=false`)
-          .then(r => r.ok ? r.json() : null)
-      )
-    );
-    const valid = blocks.filter(Boolean);
-    if (valid.length < 2) return null;
-
-    // Each block covers [first_version, last_version] of the ledger (≈ transactions)
-    const totalTx = valid.reduce((s, b) =>
-      s + (parseInt(b.last_version) - parseInt(b.first_version)), 0);
-    // Aptos timestamps are in microseconds
-    const spanSec = (parseInt(valid[0].block_timestamp) - parseInt(valid[valid.length - 1].block_timestamp)) / 1e6;
-    return spanSec > 0 ? parseFloat((totalTx / spanSec).toFixed(1)) : null;
-  } catch { return null; }
-}
 
 let _feeCache = null;
 let _feeCacheAt = 0;
@@ -426,50 +351,22 @@ async function fetchChainFees() {
   // Cache for 60s — CoinGecko free tier is rate-limited
   if (_feeCache && Date.now() - _feeCacheAt < 60000) return _feeCache;
   try {
-    // Fetch token prices + gas prices in parallel
-    const [priceRes, suiGasRes, ethGasRes, aptGasRes] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/simple/price?ids=sui,solana,ethereum,aptos&vs_currencies=usd')
+    const [priceRes, suiGasRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=sui&vs_currencies=usd')
         .then(r => r.ok ? r.json() : null),
       fetch('https://fullnode.mainnet.sui.io:443', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'suix_getReferenceGasPrice', params: [] }),
       }).then(r => r.ok ? r.json() : null),
-      fetch('https://cloudflare-eth.com', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }),
-      }).then(r => r.ok ? r.json() : null),
-      fetch('https://fullnode.mainnet.aptoslabs.com/v1/estimate_gas_price')
-        .then(r => r.ok ? r.json() : null),
     ]);
 
-    if (!priceRes) return null;
-
-    const p = {
-      sui: priceRes.sui?.usd,
-      sol: priceRes.solana?.usd,
-      eth: priceRes.ethereum?.usd,
-      apt: priceRes.aptos?.usd,
-    };
-
-    const suiGasPrice = suiGasRes?.result ? parseInt(suiGasRes.result) : null;  // MIST per gas unit
-    const ethGasPrice = ethGasRes?.result ? parseInt(ethGasRes.result, 16) : null; // wei per gas unit
-    const aptGasPrice = aptGasRes?.gas_estimate ?? null; // Octas per gas unit
+    const suiPrice = priceRes?.sui?.usd;
+    const suiGasPrice = suiGasRes?.result ? parseInt(suiGasRes.result) : null;
 
     const fees = {};
-
-    // Sui: reference gas price × ~1000 gas units (simple tx) / 1e9 MIST per SUI
-    if (suiGasPrice && p.sui) fees.sui = suiGasPrice * 1000 / 1e9 * p.sui;
-
-    // Solana: base fee is always 5000 lamports per signature / 1e9 lamports per SOL
-    if (p.sol) fees.sol = 5000 / 1e9 * p.sol;
-
-    // Ethereum: gas price × 21000 gas (simple ETH transfer) / 1e18 wei per ETH
-    if (ethGasPrice && p.eth) fees.eth = ethGasPrice * 21000 / 1e18 * p.eth;
-
-    // Aptos: gas estimate × ~500 gas units (simple tx) / 1e8 Octas per APT
-    if (aptGasPrice && p.apt) fees.apt = aptGasPrice * 500 / 1e8 * p.apt;
+    // Sui: reference gas price (MIST/gas) × ~1000 gas / 1e9 MIST per SUI × SUI price
+    if (suiGasPrice && suiPrice) fees.sui = suiGasPrice * 1000 / 1e9 * suiPrice;
 
     _feeCache = fees;
     _feeCacheAt = Date.now();
@@ -489,19 +386,9 @@ function renderChainComparison(suiTps) {
   const suiEl = $('#suiLiveTps');
   if (suiEl) suiEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
 
-  // TPS — fire all in parallel
-  fetchSolanaTps().then(tps => { const el = $('#solanaLiveTps'); if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
-  fetchEthereumTps().then(tps => { const el = $('#ethLiveTps');    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
-  fetchAptosTps().then(tps =>   { const el = $('#aptosLiveTps');  if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
-
-  // Fees — single batch fetch then populate all cells
   fetchChainFees().then(fees => {
-    if (!fees) return;
-    const set = (id, val) => { const el = $(`#${id}`); if (el) el.textContent = fmtFee(val); };
-    set('suiFee',  fees.sui);
-    set('solFee',  fees.sol);
-    set('ethFee',  fees.eth);
-    set('aptFee',  fees.apt);
+    const el = $('#suiFee');
+    if (el) el.textContent = fmtFee(fees?.sui);
   });
 }
 
