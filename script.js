@@ -64,6 +64,9 @@ let previousWallets = [];
 let refreshTimer = null;
 let countdown = REFRESH_INTERVAL;
 let isPageVisible = true;
+let defiRange = '30d';
+let defiCache = null;
+let defiTotalTxCache = null;
 
 /* ── Utilities ──────────────────────────────────────── */
 
@@ -299,7 +302,6 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
 /* ── DeFiLlama integration ──────────────────────────── */
 
 async function loadDefiLlamaData() {
-  const cutoff = Math.floor(Date.now() / 1000) - 30 * 86400;
   try {
     const [tvlRes, dexRes] = await Promise.allSettled([
       fetch('https://api.llama.fi/v2/historicalChainTvl/Sui').then(r => r.ok ? r.json() : null),
@@ -309,22 +311,36 @@ async function loadDefiLlamaData() {
     const tvlRaw = tvlRes.status === 'fulfilled' ? tvlRes.value : null;
     const dexRaw = dexRes.status === 'fulfilled' ? dexRes.value : null;
 
-    const tvl30d = Array.isArray(tvlRaw)
-      ? tvlRaw.filter(d => d.date >= cutoff).map(d => ({ date: d.date * 1000, value: d.tvl }))
+    // Keep full history — filtering happens client-side in renderDefiSection
+    const tvlAll = Array.isArray(tvlRaw)
+      ? tvlRaw.map(d => ({ date: d.date * 1000, value: d.tvl }))
       : [];
-    const dex30d = Array.isArray(dexRaw?.totalDataChart)
-      ? dexRaw.totalDataChart.filter(([d]) => d >= cutoff).map(([d, v]) => ({ date: d * 1000, value: v }))
+    const dexAll = Array.isArray(dexRaw?.totalDataChart)
+      ? dexRaw.totalDataChart.map(([d, v]) => ({ date: d * 1000, value: v }))
       : [];
 
-    return {
-      tvl30d,
-      dex30d,
-      currentTvl: tvl30d.at(-1)?.value ?? null,
-      total30dDexVol: dex30d.reduce((s, d) => s + d.value, 0),
-    };
+    return { tvlAll, dexAll, currentTvl: tvlAll.at(-1)?.value ?? null };
   } catch {
-    return { tvl30d: [], dex30d: [], currentTvl: null, total30dDexVol: 0 };
+    return { tvlAll: [], dexAll: [], currentTvl: null };
   }
+}
+
+const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90, 'all': Infinity };
+const RANGE_LABELS = { '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', 'all': 'All time' };
+
+function sliceByRange(arr, range) {
+  const days = RANGE_DAYS[range] ?? 30;
+  if (days === Infinity) return arr;
+  const cutoff = Date.now() - days * 86400 * 1000;
+  return arr.filter(d => d.date >= cutoff);
+}
+
+function setDefiRange(range) {
+  defiRange = range;
+  document.querySelectorAll('.range-tab').forEach(el => {
+    el.classList.toggle('range-tab--active', el.dataset.range === range);
+  });
+  if (defiCache) renderDefiSection(defiCache, defiTotalTxCache);
 }
 
 function renderTrendChart(containerId, data, color) {
@@ -361,13 +377,26 @@ function renderTrendChart(containerId, data, color) {
 }
 
 function renderDefiSection(defi, totalTx) {
-  const tvlEl = $('#metricTVL');
-  if (tvlEl) tvlEl.textContent = formatUSD(defi.currentTvl);
-  renderTrendChart('chartTVL', defi.tvl30d, '#7dd3fc');
+  defiCache = defi;
+  defiTotalTxCache = totalTx;
 
+  const tvlSlice = sliceByRange(defi.tvlAll, defiRange);
+  const dexSlice = sliceByRange(defi.dexAll, defiRange);
+  const rangeLabel = RANGE_LABELS[defiRange] ?? 'Last 30 days';
+
+  const tvlEl = $('#metricTVL');
+  // TVL: show current (latest) value regardless of range; chart shows the window
+  if (tvlEl) tvlEl.textContent = formatUSD(defi.currentTvl);
+  const tvlNote = $('#tvlNote');
+  if (tvlNote) tvlNote.textContent = `Current · ${rangeLabel} trend`;
+  renderTrendChart('chartTVL', tvlSlice, '#7dd3fc');
+
+  const dexTotal = dexSlice.reduce((s, d) => s + d.value, 0);
   const dexEl = $('#metricDexVol');
-  if (dexEl) dexEl.textContent = formatUSD(defi.total30dDexVol);
-  renderTrendChart('chartDexVol', defi.dex30d, '#34d399');
+  if (dexEl) dexEl.textContent = formatUSD(dexTotal);
+  const dexNote = $('#dexNote');
+  if (dexNote) dexNote.textContent = `${rangeLabel} · All Sui DEXes`;
+  renderTrendChart('chartDexVol', dexSlice, '#34d399');
 
   const txEl = $('#metricTotalTx');
   if (txEl && totalTx) {
@@ -463,14 +492,30 @@ async function loadData() {
   const indexed = indexedResult.status === 'fulfilled' ? indexedResult.value : null;
   const norm    = indexed ? normalizeData(indexed) : null;
 
+  // Merge live (fresh RPC) + indexed (jun window aggregates) smartly
+  const liveStats = live?.networkStats ?? {};
+  const normStats = norm?.networkStats ?? {};
+  const networkStats = (live || norm) ? {
+    // From live RPC — always the freshest values
+    epoch:             liveStats.epoch             ?? normStats.epoch             ?? null,
+    validatorCount:    liveStats.validatorCount     ?? normStats.validatorCount    ?? 0,
+    avgFinalityMs:     liveStats.avgFinalityMs      ?? normStats.avgFinalityMs     ?? null,
+    tps:               liveStats.tps               ?? null,
+    totalTransactions: liveStats.totalTransactions  ?? null,
+    // From indexed (jun) — window-specific aggregates over 1,000 checkpoints
+    totalTx:           normStats.totalTx            ?? liveStats.totalTx           ?? 0,
+    uniqueWallets:     normStats.uniqueWallets       ?? null,
+    newWallets:        normStats.newWallets          ?? null,
+    windowDurationSeconds: normStats.windowDurationSeconds ?? null,
+    windowCheckpoints: normStats.windowCheckpoints   ?? null,
+  } : null;
+
   return {
     source:       live ? 'sui rpc · live'   : (norm?.source || 'sample data'),
     updatedAt:    norm?.updatedAt            || new Date().toISOString(),
-    window:       norm?.window               || (live ? '20 checkpoints' : '—'),
-    // Live takes priority for checkpoints + network stats
-    networkStats: live?.networkStats         || norm?.networkStats || null,
+    window:       norm?.window               || '—',
+    networkStats,
     checkpoints:  live?.checkpoints          || norm?.checkpoints  || [],
-    // Indexed source for aggregated data — requires jun
     topContracts: norm?.topContracts         || [],
     activeWallets:norm?.activeWallets        || [],
     _liveOk:      !!live,
@@ -515,7 +560,11 @@ function updateSummary(data, animate = true) {
 
   // Window badge on checkpoint stream section
   const winEl = $('#checkpointWindow');
-  if (winEl) winEl.textContent = data.window || '—';
+  if (winEl) {
+    const ncp = stats?.windowCheckpoints;
+    const winStr = data.window || '—';
+    winEl.textContent = ncp ? `${winStr} · ${formatNumber(ncp)} checkpoints` : winStr;
+  }
 
   // Contract / wallet badges
   const cMeta = $('#contractMeta'), wMeta = $('#walletMeta');
@@ -538,7 +587,11 @@ function updateSummary(data, animate = true) {
     if (animate && totalTx) animateValue(txEl, formatNumber(totalTx));
     else txEl.textContent = totalTx ? formatNumber(totalTx) : '—';
   }
-  if (txNote) txNote.textContent = `in the last ${data.window || '—'}`;
+  if (txNote) {
+    const ncp = stats?.windowCheckpoints;
+    const w = data.window || '—';
+    txNote.textContent = ncp ? `${w} · ${formatNumber(ncp)} checkpoints` : w;
+  }
 
   // Hero card 3: unique wallets
   const uwEl = $('#metricWallets'), uwNote = $('#metricWalletsNote');
@@ -549,7 +602,8 @@ function updateSummary(data, animate = true) {
   }
   if (uwNote) {
     const newW = stats?.newWallets;
-    uwNote.textContent = newW ? `${formatNumber(newW)} new this window` : 'Unique senders';
+    const w = data.window;
+    uwNote.textContent = newW ? `${formatNumber(newW)} new · ${w || 'this window'}` : (w ? `in the last ${w}` : 'Unique senders');
   }
 
   // Hero card 4: active protocols

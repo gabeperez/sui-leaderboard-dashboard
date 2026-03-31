@@ -645,6 +645,39 @@ body::before {
   transition: opacity 0.12s;
 }
 
+/* ── Time range tabs ────────────────────────────────── */
+
+.range-tabs {
+  display: inline-flex;
+  gap: 0.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.75rem;
+  padding: 0.2rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.range-tab {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.55rem;
+  border: none;
+  background: transparent;
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.range-tab:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.range-tab--active {
+  background: rgba(125, 211, 252, 0.12);
+  color: #7dd3fc;
+}
+
 /* ── View-all button ────────────────────────────────── */
 
 .view-all-btn {
