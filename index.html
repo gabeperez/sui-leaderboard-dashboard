@@ -206,7 +206,7 @@
           </div>
         </div>
         <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <table class="chain-compare chain-compare--full" aria-label="Chain comparison">
+          <table class="chain-compare" aria-label="Chain comparison">
             <thead>
               <tr>
                 <th>Chain</th>
@@ -222,25 +222,25 @@
               <tr class="chain-sui">
                 <td><strong>Sui</strong></td>
                 <td class="finality-fast">~400 ms</td>
-                <td>$0.005</td>
+                <td><span id="suiFee">—</span> <span class="live-badge">live</span></td>
                 <td><span id="suiLiveTps">—</span> <span class="live-badge">live</span></td>
               </tr>
               <tr>
                 <td>Solana</td>
                 <td>~400 ms</td>
-                <td>$0.002</td>
+                <td><span id="solFee">—</span> <span class="live-badge">live</span></td>
                 <td><span id="solanaLiveTps">—</span> <span class="live-badge">live</span></td>
               </tr>
               <tr>
                 <td>Aptos</td>
                 <td>~900 ms</td>
-                <td>$0.001</td>
+                <td><span id="aptFee">—</span> <span class="live-badge">live</span></td>
                 <td><span id="aptosLiveTps">—</span> <span class="live-badge">live</span></td>
               </tr>
               <tr>
                 <td>Ethereum</td>
                 <td>~12 min</td>
-                <td>$5–50</td>
+                <td><span id="ethFee">—</span> <span class="live-badge">live</span></td>
                 <td><span id="ethLiveTps">—</span> <span class="live-badge">live</span></td>
               </tr>
             </tbody>

@@ -419,22 +419,89 @@ async function fetchAptosTps() {
   } catch { return null; }
 }
 
+let _feeCache = null;
+let _feeCacheAt = 0;
+
+async function fetchChainFees() {
+  // Cache for 60s — CoinGecko free tier is rate-limited
+  if (_feeCache && Date.now() - _feeCacheAt < 60000) return _feeCache;
+  try {
+    // Fetch token prices + gas prices in parallel
+    const [priceRes, suiGasRes, ethGasRes, aptGasRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=sui,solana,ethereum,aptos&vs_currencies=usd')
+        .then(r => r.ok ? r.json() : null),
+      fetch('https://fullnode.mainnet.sui.io:443', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'suix_getReferenceGasPrice', params: [] }),
+      }).then(r => r.ok ? r.json() : null),
+      fetch('https://cloudflare-eth.com', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_gasPrice', params: [] }),
+      }).then(r => r.ok ? r.json() : null),
+      fetch('https://fullnode.mainnet.aptoslabs.com/v1/estimate_gas_price')
+        .then(r => r.ok ? r.json() : null),
+    ]);
+
+    if (!priceRes) return null;
+
+    const p = {
+      sui: priceRes.sui?.usd,
+      sol: priceRes.solana?.usd,
+      eth: priceRes.ethereum?.usd,
+      apt: priceRes.aptos?.usd,
+    };
+
+    const suiGasPrice = suiGasRes?.result ? parseInt(suiGasRes.result) : null;  // MIST per gas unit
+    const ethGasPrice = ethGasRes?.result ? parseInt(ethGasRes.result, 16) : null; // wei per gas unit
+    const aptGasPrice = aptGasRes?.gas_estimate ?? null; // Octas per gas unit
+
+    const fees = {};
+
+    // Sui: reference gas price × ~1000 gas units (simple tx) / 1e9 MIST per SUI
+    if (suiGasPrice && p.sui) fees.sui = suiGasPrice * 1000 / 1e9 * p.sui;
+
+    // Solana: base fee is always 5000 lamports per signature / 1e9 lamports per SOL
+    if (p.sol) fees.sol = 5000 / 1e9 * p.sol;
+
+    // Ethereum: gas price × 21000 gas (simple ETH transfer) / 1e18 wei per ETH
+    if (ethGasPrice && p.eth) fees.eth = ethGasPrice * 21000 / 1e18 * p.eth;
+
+    // Aptos: gas estimate × ~500 gas units (simple tx) / 1e8 Octas per APT
+    if (aptGasPrice && p.apt) fees.apt = aptGasPrice * 500 / 1e8 * p.apt;
+
+    _feeCache = fees;
+    _feeCacheAt = Date.now();
+    return fees;
+  } catch { return null; }
+}
+
+function fmtFee(usd) {
+  if (usd == null) return '—';
+  if (usd < 0.0001) return `$${usd.toFixed(6)}`;
+  if (usd < 0.01)   return `$${usd.toFixed(4)}`;
+  if (usd < 1)      return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
 function renderChainComparison(suiTps) {
   const suiEl = $('#suiLiveTps');
   if (suiEl) suiEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
 
-  // Fire all three in parallel — each updates its cell when it resolves
-  fetchSolanaTps().then(tps => {
-    const el = $('#solanaLiveTps');
-    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
-  });
-  fetchEthereumTps().then(tps => {
-    const el = $('#ethLiveTps');
-    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
-  });
-  fetchAptosTps().then(tps => {
-    const el = $('#aptosLiveTps');
-    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—';
+  // TPS — fire all in parallel
+  fetchSolanaTps().then(tps => { const el = $('#solanaLiveTps'); if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
+  fetchEthereumTps().then(tps => { const el = $('#ethLiveTps');    if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
+  fetchAptosTps().then(tps =>   { const el = $('#aptosLiveTps');  if (el) el.textContent = tps != null ? tps.toLocaleString() : '—'; });
+
+  // Fees — single batch fetch then populate all cells
+  fetchChainFees().then(fees => {
+    if (!fees) return;
+    const set = (id, val) => { const el = $(`#${id}`); if (el) el.textContent = fmtFee(val); };
+    set('suiFee',  fees.sui);
+    set('solFee',  fees.sol);
+    set('ethFee',  fees.eth);
+    set('aptFee',  fees.apt);
   });
 }
 
