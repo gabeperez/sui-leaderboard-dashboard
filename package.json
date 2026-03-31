@@ -1,0 +1,11 @@
+{
+  "name": "sui-leaderboard-dashboard",
+  "private": true,
+  "scripts": {
+    "generate": "bun generate-leaderboard.ts",
+    "watch": "watch -n 30 'bun generate-leaderboard.ts live.sqlite leaderboard.json && echo Refreshed'"
+  },
+  "dependencies": {
+    "jun": "file:./jun"
+  }
+}
