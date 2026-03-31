@@ -840,6 +840,60 @@ body::before {
   display: block;
 }
 
+/* ── Sui performance strip ──────────────────────────── */
+
+.sui-perf-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  flex-wrap: wrap;
+}
+
+.sui-perf-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.sui-perf-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sui-perf-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sui-perf-stat-label {
+  font-size: 0.72rem;
+  color: rgba(148, 163, 184, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.sui-perf-stat-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sui-perf-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* ── Live badge ─────────────────────────────────────── */
 
 .live-badge {

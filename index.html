@@ -194,42 +194,25 @@
     </section>
 
     <!-- How Sui compares -->
-    <section class="mt-6" aria-label="Chain comparison">
-      <article class="dashboard-shell p-5 sm:p-6">
-        <div class="section-head mb-4">
-          <div>
-            <h2 class="section-title">
-              How Sui compares
-              <span class="info-tip" data-tip="TPS for Sui and Solana is fetched live. Ethereum and Aptos are stable enough to be static estimates. Finality and fees are representative averages.">ⓘ</span>
-            </h2>
-            <p class="section-subtitle">Live TPS where available · finality and fees are representative</p>
-          </div>
+    <div class="sui-perf-strip mt-6">
+      <span class="sui-perf-label">Sui mainnet</span>
+      <div class="sui-perf-stats">
+        <div class="sui-perf-stat">
+          <span class="sui-perf-stat-label">Finality</span>
+          <span class="sui-perf-stat-value finality-fast" id="suiPerfFinality">—</span>
         </div>
-        <div class="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <table class="chain-compare" aria-label="Chain comparison">
-            <thead>
-              <tr>
-                <th>Chain</th>
-                <th>Finality</th>
-                <th>Avg fee</th>
-                <th>
-                  TPS
-                  <span class="info-tip" data-tip="Sui and Solana show live transactions per second, refreshed every 30s. Ethereum and Aptos show typical values.">ⓘ</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="chain-sui">
-                <td><strong>Sui</strong></td>
-                <td class="finality-fast">~400 ms</td>
-                <td><span id="suiFee">—</span> <span class="live-badge">live</span></td>
-                <td><span id="suiLiveTps">—</span> <span class="live-badge">live</span></td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="sui-perf-divider"></div>
+        <div class="sui-perf-stat">
+          <span class="sui-perf-stat-label">Avg fee <span class="live-badge">live</span></span>
+          <span class="sui-perf-stat-value" id="suiFee">—</span>
         </div>
-      </article>
-    </section>
+        <div class="sui-perf-divider"></div>
+        <div class="sui-perf-stat">
+          <span class="sui-perf-stat-label">TPS <span class="live-badge">live</span></span>
+          <span class="sui-perf-stat-value" id="suiLiveTps">—</span>
+        </div>
+      </div>
+    </div>
 
     <!-- Protocol activity + Power users -->
     <section class="mt-6 grid gap-6 xl:grid-cols-2">

@@ -382,9 +382,12 @@ function fmtFee(usd) {
   return `$${usd.toFixed(2)}`;
 }
 
-function renderChainComparison(suiTps) {
-  const suiEl = $('#suiLiveTps');
-  if (suiEl) suiEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
+function renderSuiPerf(suiTps, avgFinalityMs) {
+  const tpsEl = $('#suiLiveTps');
+  if (tpsEl) tpsEl.textContent = suiTps != null ? suiTps.toLocaleString() : '—';
+
+  const finEl = $('#suiPerfFinality');
+  if (finEl) finEl.textContent = avgFinalityMs != null ? `${avgFinalityMs}ms` : '—';
 
   fetchChainFees().then(fees => {
     const el = $('#suiFee');
@@ -704,8 +707,8 @@ function updateSummary(data, animate = true) {
   drawSparkline('sparkWallets', pad(new Array(Math.min(wallets.length, 6)).fill(uniqueWallets / 6), 6), '#34d399');
   drawSparkline('sparkProtocols', pad(contractActs.slice(0, 6), 6), '#a78bfa');
 
-  // Update live chain comparison with Sui's current TPS
-  renderChainComparison(stats?.tps ?? null);
+  // Update live Sui performance strip
+  renderSuiPerf(stats?.tps ?? null, stats?.avgFinalityMs ?? null);
 }
 
 /* ── Network health panel ───────────────────────────── */
