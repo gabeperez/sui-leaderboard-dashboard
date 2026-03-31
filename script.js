@@ -1,6 +1,8 @@
 const DATA_SOURCE = './leaderboard.json';
 const SUI_RPC_URL = 'https://fullnode.mainnet.sui.io:443';
+const SUISCAN_BASE = 'https://suiscan.xyz/mainnet';
 const REFRESH_INTERVAL = 30;
+const ZERO_ADDRESS = '0x' + '0'.repeat(64);
 
 const SAMPLE_DATA = {
   source: 'sample fallback',
@@ -60,6 +62,13 @@ function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(value ?? 0);
 }
 
+function formatBig(n) {
+  if (n == null) return '—';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  return formatNumber(n);
+}
+
 function formatTime(value) {
   if (!value) return '—';
   return new Intl.DateTimeFormat('en-US', {
@@ -68,6 +77,17 @@ function formatTime(value) {
     month: 'short',
     day: 'numeric'
   }).format(new Date(value));
+}
+
+function timeAgo(value) {
+  if (!value) return 'recent';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return String(value);
+  const diff = Date.now() - date.getTime();
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
 }
 
 function normalizeData(raw) {
@@ -82,7 +102,27 @@ function normalizeData(raw) {
   };
 }
 
-/* ── Address resolution (from main) ─────────────────── */
+/* ── SuiScan link helpers ───────────────────────────── */
+
+function suiscanCheckpointUrl(seq) {
+  return `${SUISCAN_BASE}/checkpoint/${seq}`;
+}
+
+function suiscanAccountUrl(address) {
+  return `${SUISCAN_BASE}/account/${address}`;
+}
+
+function suiscanObjectUrl(address) {
+  return `${SUISCAN_BASE}/object/${address}`;
+}
+
+const EXT_ICON = '<svg class="ext-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10L10 2M6 2h4v4"/></svg>';
+
+function extLink(url, label) {
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="ext-link">${label}${EXT_ICON}</a>`;
+}
+
+/* ── Address resolution ─────────────────────────────── */
 
 function isHexAddress(value) {
   return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value);
@@ -90,6 +130,12 @@ function isHexAddress(value) {
 
 function normalizeAddress(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function isZeroAddress(value) {
+  const norm = normalizeAddress(value);
+  return norm === '0x0000000000000000000000000000000000000000000000000000000000000000'
+    || norm === '0x0';
 }
 
 function shortAddress(value) {
@@ -218,12 +264,17 @@ async function resolveContractLabel(item) {
 }
 
 async function enrichData(data) {
+  // Filter zero address wallets — not a real wallet
+  const wallets = (data.activeWallets || []).filter(
+    (w) => !isZeroAddress(w.label ?? w.wallet ?? w.address ?? w.owner ?? '')
+  );
+
   const [topContracts, activeWallets] = await Promise.all([
     Promise.all((data.topContracts || []).map(async (item) => ({
       ...item,
       displayLabel: await resolveContractLabel(item)
     }))),
-    Promise.all((data.activeWallets || []).map(async (item) => ({
+    Promise.all(wallets.map(async (item) => ({
       ...item,
       displayLabel: await resolveWalletLabel(item.label ?? item.wallet ?? item.address ?? item.owner)
     })))
@@ -234,6 +285,88 @@ async function enrichData(data) {
     topContracts,
     activeWallets
   };
+}
+
+/* ── Live data from Sui RPC ─────────────────────────── */
+
+async function loadLiveCheckpoints() {
+  try {
+    const res = await fetch(SUI_RPC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'live-checkpoints',
+        method: 'sui_getCheckpoints',
+        params: [null, 20, true]
+      })
+    });
+    const json = await res.json();
+    if (json.error || !json.result?.data?.length) return null;
+
+    const cps = json.result.data;
+    return cps.map((cp, i) => {
+      const prevCp = cps[i + 1];
+      const finalityMs = prevCp
+        ? parseInt(cp.timestampMs) - parseInt(prevCp.timestampMs)
+        : null;
+      return {
+        checkpoint: parseInt(cp.sequenceNumber),
+        txCount: parseInt(cp.numTransactionBlocks || '0'),
+        eventCount: 0,
+        finalitySeconds: finalityMs != null ? Math.max(0, finalityMs / 1000) : null,
+        timestamp: new Date(parseInt(cp.timestampMs)).toISOString(),
+        digest: cp.digest,
+        networkTotalTransactions: cp.networkTotalTransactions
+          ? parseInt(cp.networkTotalTransactions)
+          : null
+      };
+    });
+  } catch (e) {
+    console.warn('Live checkpoint fetch failed:', e.message);
+    return null;
+  }
+}
+
+async function loadNetworkStats(checkpoints) {
+  try {
+    const res = await fetch(SUI_RPC_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'system-state',
+        method: 'suix_getLatestSuiSystemState',
+        params: []
+      })
+    });
+    const json = await res.json();
+    if (json.error || !json.result) return null;
+
+    const state = json.result;
+
+    let tps = null;
+    if (checkpoints && checkpoints.length >= 2) {
+      const newest = checkpoints[0];
+      const oldest = checkpoints[checkpoints.length - 1];
+      const totalTx = checkpoints.reduce((sum, cp) => sum + (cp.txCount || 0), 0);
+      const spanMs = new Date(newest.timestamp).getTime() - new Date(oldest.timestamp).getTime();
+      if (spanMs > 0) tps = (totalTx / (spanMs / 1000)).toFixed(1);
+    }
+
+    // Total transactions from latest checkpoint's networkTotalTransactions
+    const totalTransactions = checkpoints?.[0]?.networkTotalTransactions ?? null;
+
+    return {
+      epoch: parseInt(state.epoch),
+      validatorCount: state.activeValidators?.length ?? 0,
+      tps,
+      totalTransactions
+    };
+  } catch (e) {
+    console.warn('Network stats fetch failed:', e.message);
+    return null;
+  }
 }
 
 /* ── Copy to clipboard ──────────────────────────────── */
@@ -314,7 +447,6 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
 
   ctx.clearRect(0, 0, w, h);
 
-  // Fill gradient
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
   gradient.addColorStop(0, color.replace(')', ', 0.25)').replace('rgb', 'rgba'));
   gradient.addColorStop(1, 'transparent');
@@ -327,14 +459,12 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
     else ctx.lineTo(x, y);
   });
 
-  // Close path for fill
   ctx.lineTo(w - padding, h);
   ctx.lineTo(padding, h);
   ctx.closePath();
   ctx.fillStyle = gradient;
   ctx.fill();
 
-  // Stroke line
   ctx.beginPath();
   values.forEach((v, i) => {
     const x = (i / (values.length - 1)) * (w - padding * 2) + padding;
@@ -347,7 +477,6 @@ function drawSparkline(canvasId, values, color = '#60a5fa') {
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // End dot
   const lastX = w - padding;
   const lastY = h - padding - ((values[values.length - 1] - min) / range) * (h - padding * 2);
   ctx.beginPath();
@@ -398,13 +527,28 @@ function setStatus(state) {
 
   if (state === 'live') {
     dot.classList.add('is-live');
-    text.textContent = 'jun-indexed Sui analytics — live';
+    text.textContent = 'Sui mainnet — live';
   } else if (state === 'stale') {
     dot.classList.add('is-stale');
-    text.textContent = 'jun-indexed Sui analytics — stale';
+    text.textContent = 'Sui mainnet — leaderboard data stale';
   } else {
     dot.classList.add('is-offline');
-    text.textContent = 'jun-indexed Sui analytics — offline';
+    text.textContent = 'Sui mainnet — RPC offline';
+  }
+}
+
+/* ── Stale banner ───────────────────────────────────── */
+
+function updateStaleBanner(updatedAt) {
+  const banner = $('#staleBanner');
+  if (!banner) return;
+  const age = Date.now() - new Date(updatedAt).getTime();
+  const hours = Math.floor(age / 3600000);
+  if (age > 3600000) {
+    banner.textContent = `Contract & wallet data is ${hours}h old — update leaderboard.json to refresh.`;
+    banner.hidden = false;
+  } else {
+    banner.hidden = true;
   }
 }
 
@@ -476,20 +620,66 @@ function renderLoading() {
     .join('');
 }
 
+/* ── Render network stats ───────────────────────────── */
+
+function renderNetworkStats(stats) {
+  const container = $('#networkStatsGrid');
+  if (!container) return;
+
+  if (!stats) {
+    container.innerHTML = `
+      <div class="net-stat-item">
+        <span class="net-stat-label">RPC</span>
+        <span class="net-stat-value" style="color:rgba(203,213,225,0.5)">unavailable</span>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="net-stat-item">
+      <span class="net-stat-label">Epoch</span>
+      <span class="net-stat-value">${stats.epoch ?? '—'}</span>
+    </div>
+    <div class="net-stat-item">
+      <span class="net-stat-label">Validators</span>
+      <span class="net-stat-value">${stats.validatorCount ?? '—'}</span>
+    </div>
+    <div class="net-stat-item">
+      <span class="net-stat-label">Est. TPS</span>
+      <span class="net-stat-value">${stats.tps ?? '—'}</span>
+    </div>
+    <div class="net-stat-item">
+      <span class="net-stat-label">Total txs</span>
+      <span class="net-stat-value">${formatBig(stats.totalTransactions)}</span>
+    </div>
+  `;
+}
+
 /* ── Render checkpoints ─────────────────────────────── */
 
-function renderCheckpoints(checkpoints) {
+function renderCheckpoints(checkpoints, isLive) {
   const list = $('#checkpointList');
+  const badge = $('#checkpointSourceBadge');
+  if (badge) {
+    badge.textContent = isLive ? 'live from RPC' : 'from leaderboard.json';
+    badge.className = `section-badge ${isLive ? 'badge-live' : 'badge-stale'}`;
+  }
+
   if (!checkpoints.length) {
     list.innerHTML = `<div class="px-4 py-6 text-sm text-slate-400">No checkpoint rows found yet.</div>`;
     return;
   }
 
   list.innerHTML = checkpoints
-    .map((item, i) => `
+    .map((item, i) => {
+      const seq = item.checkpoint ?? item.height ?? item.id;
+      const finality = item.finalitySeconds != null
+        ? `${Number(item.finalitySeconds).toFixed(2)}s`
+        : '—';
+      return `
       <div class="checkpoint-row row-enter" style="animation-delay:${i * 50}ms">
         <div>
-          <div class="row-title">#${formatNumber(item.checkpoint ?? item.height ?? item.id)}</div>
+          <div class="row-title">${extLink(suiscanCheckpointUrl(seq), `#${formatNumber(seq)}`)}</div>
           <div class="row-subtitle">${item.timestamp ? formatTime(item.timestamp) : 'Recent checkpoint'}</div>
         </div>
         <div>
@@ -501,11 +691,11 @@ function renderCheckpoints(checkpoints) {
           <div class="row-subtitle">events</div>
         </div>
         <div>
-          <div class="row-title">${Number(item.finalitySeconds ?? item.finality ?? 0).toFixed(2)}s</div>
+          <div class="row-title">${finality}</div>
           <div class="row-subtitle">finality</div>
         </div>
-      </div>
-    `)
+      </div>`;
+    })
     .join('');
 }
 
@@ -527,18 +717,24 @@ function renderContracts(topContracts) {
       const activity = item.activity ?? item.count ?? 0;
       const wallets = item.wallets ?? item.uniqueWallets ?? 0;
       const change = getRankChange(label, prevLabels);
+      const rawLabel = item.label ?? item.contract ?? item.name ?? '';
+      const { address } = splitContractLabel(rawLabel);
+      const addressToCopy = address || rawLabel;
 
       return `
       <div class="contract-row row-enter" style="animation-delay:${i * 50}ms">
         <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
           ${rankBadge(i)}
           <div style="min-width:0">
-            <div class="row-title" style="display:flex;align-items:center">
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
-              ${copyButton(label)}
+            <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
+              ${address
+                ? extLink(suiscanObjectUrl(address), label)
+                : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`
+              }
+              ${copyButton(addressToCopy)}
               ${change}
             </div>
-            <div class="row-subtitle">Top-ranked by jun activity</div>
+            <div class="row-subtitle">${address ? shortAddress(address) : 'Unknown package'}</div>
           </div>
         </div>
         <div>${activityBar(activity, maxActivity)}</div>
@@ -567,9 +763,11 @@ function renderWallets(activeWallets) {
 
   list.innerHTML = activeWallets
     .map((item, i) => {
-      const label = item.displayLabel ?? item.label ?? item.wallet ?? item.address ?? 'Unknown wallet';
+      const rawAddress = normalizeAddress(item.label ?? item.wallet ?? item.address ?? item.owner ?? '');
+      const label = item.displayLabel ?? shortAddress(rawAddress) ?? 'Unknown wallet';
       const actions = item.actions ?? item.count ?? 0;
-      const lastSeen = item.lastSeen ?? item.updatedAt ?? 'recent';
+      const lastSeenRaw = item.lastSeen ?? item.updatedAt ?? null;
+      const lastSeenText = lastSeenRaw ? timeAgo(lastSeenRaw) : 'recent';
       const change = getRankChange(label, prevLabels);
 
       return `
@@ -577,17 +775,20 @@ function renderWallets(activeWallets) {
         <div class="flex items-center gap-2.5" style="display:flex;align-items:center;gap:0.6rem">
           ${rankBadge(i)}
           <div style="min-width:0">
-            <div class="row-title" style="display:flex;align-items:center">
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
-              ${copyButton(label)}
+            <div class="row-title" style="display:flex;align-items:center;gap:0.25rem">
+              ${rawAddress
+                ? extLink(suiscanAccountUrl(rawAddress), label)
+                : `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`
+              }
+              ${rawAddress ? copyButton(rawAddress) : ''}
               ${change}
             </div>
-            <div class="row-subtitle">Active in the latest checkpoint window</div>
+            <div class="row-subtitle">${rawAddress ? shortAddress(rawAddress) : ''}</div>
           </div>
         </div>
         <div>${activityBar(actions, maxActions)}</div>
         <div>
-          <span class="row-pill">${lastSeen}</span>
+          <span class="row-pill">${lastSeenText}</span>
         </div>
       </div>`;
     })
@@ -634,16 +835,13 @@ function updateSummary(data, animate = true) {
   }
 
   $('#latestCheckpointNote').textContent = latestCheckpoint
-    ? `${formatNumber(latestCheckpoint.txCount ?? latestCheckpoint.transactions ?? 0)} transactions in the latest row`
-    : 'Awaiting indexed export';
+    ? `${formatNumber(latestCheckpoint.txCount ?? latestCheckpoint.transactions ?? 0)} txs in the latest checkpoint`
+    : 'Awaiting data';
 
-  // Draw sparklines from checkpoint data
   const txValues = checkpoints.map((c) => c.txCount ?? c.transactions ?? 0).reverse();
-  const eventValues = checkpoints.map((c) => c.eventCount ?? c.events ?? 0).reverse();
   const contractActivities = contracts.map((c) => c.activity ?? c.count ?? 0);
   const walletActions = wallets.map((w) => w.actions ?? w.count ?? 0);
 
-  // Pad short arrays for better visuals
   const pad = (arr, min) => arr.length >= min ? arr : [...Array(min - arr.length).fill(arr[0] ?? 0), ...arr];
 
   drawSparkline('sparkCheckpoint', pad(checkpoints.map((c) => c.checkpoint ?? c.height ?? 0).reverse(), 6), '#7dd3fc');
@@ -678,14 +876,25 @@ async function refresh() {
   countdown = REFRESH_INTERVAL;
   updateCountdownDisplay();
 
-  const data = await loadData();
-  const enrichedData = await enrichData(data);
-  updateSummary(enrichedData, true);
-  renderCheckpoints(enrichedData.checkpoints || []);
+  const [jsonData, liveCheckpoints] = await Promise.all([
+    loadData(),
+    loadLiveCheckpoints()
+  ]);
+
+  const enrichedData = await enrichData(jsonData);
+  const checkpointsToShow = liveCheckpoints || enrichedData.checkpoints || [];
+  const networkStats = await loadNetworkStats(liveCheckpoints);
+
+  // Use live checkpoints in the stream, JSON data for contracts/wallets
+  const displayData = { ...enrichedData, checkpoints: checkpointsToShow };
+  updateSummary(displayData, true);
+  renderCheckpoints(checkpointsToShow, !!liveCheckpoints);
   renderContracts(enrichedData.topContracts || []);
   renderWallets(enrichedData.activeWallets || []);
+  renderNetworkStats(networkStats);
+  updateStaleBanner(enrichedData.updatedAt);
 
-  if (enrichedData.errors?.length) {
+  if (enrichedData.errors?.length && !liveCheckpoints) {
     setStatus('offline');
     $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
   } else {
@@ -704,14 +913,25 @@ document.addEventListener('visibilitychange', () => {
 
 async function main() {
   renderLoading();
-  const data = await loadData();
-  const enrichedData = await enrichData(data);
-  updateSummary(enrichedData, true);
-  renderCheckpoints(enrichedData.checkpoints || []);
+
+  const [jsonData, liveCheckpoints] = await Promise.all([
+    loadData(),
+    loadLiveCheckpoints()
+  ]);
+
+  const enrichedData = await enrichData(jsonData);
+  const checkpointsToShow = liveCheckpoints || enrichedData.checkpoints || [];
+  const networkStats = await loadNetworkStats(liveCheckpoints);
+
+  const displayData = { ...enrichedData, checkpoints: checkpointsToShow };
+  updateSummary(displayData, true);
+  renderCheckpoints(checkpointsToShow, !!liveCheckpoints);
   renderContracts(enrichedData.topContracts || []);
   renderWallets(enrichedData.activeWallets || []);
+  renderNetworkStats(networkStats);
+  updateStaleBanner(enrichedData.updatedAt);
 
-  if (enrichedData.errors?.length) {
+  if (enrichedData.errors?.length && !liveCheckpoints) {
     setStatus('offline');
     $('#sourceLabel').textContent = `${enrichedData.source || 'sample fallback'} / offline`;
   } else {

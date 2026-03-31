@@ -462,6 +462,105 @@ body::before {
   50% { opacity: 1; }
 }
 
+/* ── External links ─────────────────────────────────── */
+
+.ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: #bfdbfe;
+  text-decoration: none;
+  transition: color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-link:hover {
+  color: #7dd3fc;
+}
+
+.ext-icon {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+/* ── Section badge variants ─────────────────────────── */
+
+.badge-live {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.25);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.badge-stale {
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+/* ── Network health stats grid ──────────────────────── */
+
+.net-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.net-stat-item {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.9rem 1rem;
+}
+
+.net-stat-label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.net-stat-value {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  line-height: 1;
+}
+
+/* ── Code chip ──────────────────────────────────────── */
+
+.code-chip {
+  border-radius: 0.4rem;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 0.1rem 0.35rem;
+  color: #dbeafe;
+  font-size: 0.75rem;
+}
+
+/* ── Stale banner ───────────────────────────────────── */
+
+.stale-banner {
+  padding: 0.65rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: rgba(251, 191, 36, 0.07);
+  color: #fde68a;
+  font-size: 0.82rem;
+}
+
+/* ── Pulse background (loading) ─────────────────────── */
+
+.pulse-bg {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* ── Responsive ─────────────────────────────────────── */
 
 @media (max-width: 640px) {
