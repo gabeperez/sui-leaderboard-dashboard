@@ -56,30 +56,30 @@
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key metrics">
 
       <article class="metric-card metric-card--highlight">
-        <p class="metric-label">Avg finality <span class="info-tip" data-tip="Time between consecutive checkpoints. Sui's design goal is sub-400ms — faster than you can blink, and dramatically faster than any EVM chain.">ⓘ</span></p>
+        <p class="metric-label">Confirmation speed <span class="info-tip" data-tip="How fast Sui confirms each batch of transactions. Under 400ms is typical — faster than a blink, and dramatically faster than Ethereum or Solana.">ⓘ</span></p>
         <p class="metric-value" id="metricFinality">—</p>
-        <p class="metric-note" id="metricFinalityNote">Sui's core advantage</p>
+        <p class="metric-note" id="metricFinalityNote">Faster than a blink</p>
         <canvas class="sparkline" id="sparkFinality" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Transactions <span class="info-tip" data-tip="Total transaction blocks confirmed in the current leaderboard window (~4–5 minutes of Sui activity indexed by jun).">ⓘ</span></p>
+        <p class="metric-label">Transactions <span class="info-tip" data-tip="Number of transactions confirmed by Sui in the last ~5 minutes. Each transaction could be a trade, transfer, game move, or any on-chain action.">ⓘ</span></p>
         <p class="metric-value" id="metricTx">—</p>
-        <p class="metric-note" id="metricTxNote">In the current window</p>
+        <p class="metric-note" id="metricTxNote">Confirmed in the last ~5 min</p>
         <canvas class="sparkline" id="sparkTx" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Unique wallets <span class="info-tip" data-tip="Distinct sender addresses that submitted at least one transaction in the current jun indexer window.">ⓘ</span></p>
+        <p class="metric-label">Active wallets <span class="info-tip" data-tip="Number of distinct wallet addresses that sent at least one transaction in the last ~5 minutes. Each wallet is a real person or app using Sui.">ⓘ</span></p>
         <p class="metric-value" id="metricWallets">—</p>
-        <p class="metric-note" id="metricWalletsNote">Active senders</p>
+        <p class="metric-note" id="metricWalletsNote">People using Sui right now</p>
         <canvas class="sparkline" id="sparkWallets" height="32"></canvas>
       </article>
 
       <article class="metric-card">
-        <p class="metric-label">Active protocols <span class="info-tip" data-tip="Number of distinct smart contract packages that emitted at least one on-chain event in the current window. Events are the primary signal of real protocol usage.">ⓘ</span></p>
+        <p class="metric-label">Active apps <span class="info-tip" data-tip="Number of distinct apps and smart contracts that had real user activity in the last ~5 minutes. A high count means a diverse, healthy ecosystem.">ⓘ</span></p>
         <p class="metric-value" id="metricProtocols">—</p>
-        <p class="metric-note" id="metricProtocolsNote">Competing for activity</p>
+        <p class="metric-note" id="metricProtocolsNote">Apps with live activity</p>
         <canvas class="sparkline" id="sparkProtocols" height="32"></canvas>
       </article>
 
@@ -92,19 +92,18 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">
-              Checkpoint stream
-              <span class="info-tip" data-tip="Sui checkpoints are finalized batches of transactions agreed upon by the validator set. The Finality column shows the gap between consecutive checkpoints — Sui's target is sub-400ms.">ⓘ</span>
+              Transaction batches
+              <span class="info-tip" data-tip="Sui groups transactions into batches (called checkpoints) confirmed by all validators. The Speed column shows how quickly each batch was confirmed — Sui's typical speed is under 400ms.">ⓘ</span>
             </h2>
-            <p class="section-subtitle">Latest 5 checkpoints. Finality = time since the previous one.</p>
+            <p class="section-subtitle">The last 5 batches of transactions confirmed by the network.</p>
           </div>
           <span class="section-badge" id="checkpointWindow">—</span>
         </div>
         <div class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid checkpoint-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Checkpoint</span>
-            <span>Txs</span>
-            <span>Events</span>
-            <span>Finality</span>
+            <span>Transactions</span>
+            <span>Speed</span>
           </div>
           <div id="checkpointList" class="divide-y divide-white/8"></div>
         </div>
@@ -118,9 +117,9 @@
           <div>
             <h2 class="section-title">
               Network health
-              <span class="info-tip" data-tip="Live data from suix_getLatestSuiSystemState. Epoch advances roughly every 24 hours. Validators must reach 2/3+ stake-weighted quorum to finalize each checkpoint.">ⓘ</span>
+              <span class="info-tip" data-tip="Live stats from the Sui network. The epoch (day count) advances every ~24 hours. Validators are independent nodes that confirm each transaction — more validators means a more decentralized network.">ⓘ</span>
             </h2>
-            <p class="section-subtitle">Live epoch, validators, and window stats.</p>
+            <p class="section-subtitle">Live network status — updated every 30 seconds.</p>
           </div>
           <span class="section-badge badge-live">mainnet</span>
         </div>
@@ -198,7 +197,7 @@
       <span class="sui-perf-label">Sui mainnet</span>
       <div class="sui-perf-stats">
         <div class="sui-perf-stat">
-          <span class="sui-perf-stat-label">Finality</span>
+          <span class="sui-perf-stat-label">Confirmation speed</span>
           <span class="sui-perf-stat-value finality-fast" id="suiPerfFinality">—</span>
         </div>
         <div class="sui-perf-divider"></div>
@@ -221,18 +220,18 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">
-              Protocol activity
-              <span class="info-tip" data-tip="Ranked by on-chain event count. Move modules emit events when users interact — more events = more real usage. Refreshed every 15 minutes by jun indexing the last 1,000 checkpoints (~4–5 min of chain time).">ⓘ</span>
+              App activity
+              <span class="info-tip" data-tip="Apps ranked by how many actions users took in the last ~5 minutes. More actions = more real usage. Data refreshes every 15 minutes.">ⓘ</span>
             </h2>
-            <p class="section-subtitle">Ranked by event count · last 1,000 checkpoints.</p>
+            <p class="section-subtitle">Apps ranked by activity in the last ~5 minutes.</p>
           </div>
           <span class="section-badge" id="contractMeta">Loading…</span>
         </div>
         <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid contract-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span>Protocol</span>
-            <span>Activity</span>
-            <span>Wallets</span>
+            <span>App / Protocol</span>
+            <span>Actions</span>
+            <span>Users</span>
           </div>
           <div id="contractList" class="divide-y divide-white/8"></div>
         </div>
@@ -242,18 +241,18 @@
         <div class="section-head">
           <div>
             <h2 class="section-title">
-              Power users
-              <span class="info-tip" data-tip="Wallet addresses ranked by number of transaction blocks sent in the current window. High-frequency traders, bots, and active DeFi users show up here. Click any address to view it on SuiScan.">ⓘ</span>
+              Most active wallets
+              <span class="info-tip" data-tip="Wallets ranked by how many transactions they sent in the last ~5 minutes. This includes active traders, DeFi power users, and automated bots. Click any address to view it on SuiScan.">ⓘ</span>
             </h2>
-            <p class="section-subtitle">Most active senders in the leaderboard window.</p>
+            <p class="section-subtitle">Wallets that sent the most transactions in the last ~5 minutes.</p>
           </div>
           <span class="section-badge" id="walletMeta">Loading…</span>
         </div>
         <div class="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid wallet-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Wallet</span>
-            <span>Actions</span>
-            <span>Last seen</span>
+            <span>Transactions</span>
+            <span>Last active</span>
           </div>
           <div id="walletList" class="divide-y divide-white/8"></div>
         </div>
@@ -267,16 +266,15 @@
         <div class="modal-head">
           <div>
             <h2 class="section-title">Checkpoint stream</h2>
-            <p class="section-subtitle">Last 20 checkpoints · live from Sui RPC</p>
+            <p class="section-subtitle">Last 20 transaction batches · live from Sui</p>
           </div>
           <button class="modal-close" onclick="closeCheckpointModal()" aria-label="Close">✕</button>
         </div>
         <div class="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div class="grid checkpoint-head px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-400">
             <span>Checkpoint</span>
-            <span>Txs</span>
-            <span>Events</span>
-            <span>Finality</span>
+            <span>Transactions</span>
+            <span>Speed</span>
           </div>
           <div id="checkpointModalList" class="divide-y divide-white/8"></div>
         </div>

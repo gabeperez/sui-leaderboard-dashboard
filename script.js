@@ -13,17 +13,36 @@ const SAMPLE_DATA = {
 };
 
 const WELL_KNOWN_CONTRACTS = new Map([
+  // Sui system
   ['0x2', 'Sui Framework'],
-  ['0xcaf6ba059d539a97646d47f0b9ddf843e138d215e2a12ca1f4585d386f7aec3a', 'Pool'],
-  ['0xe8e485e9339ec1d42ac92350fd3708ba823ad6e813af459fa32c68562e413cda', 'DBKE'],
-  ['0x73949528d57ccc07dad6d0eb996bae9ac66cb5c2189f08072104b060190add3d', 'Interface'],
-  ['0x5ea2c97771334e4a64216d42e5ba68eb2a9792fe874c8d2bfdf8feb32ec7dc8b', 'Lotus DB Vault'],
-  ['0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809', 'Pool'],
-  ['0x4979543452f609ff272d504755966ff5e70122256101c17adbe8bd27d35116c3', 'Price Data Pull v2'],
-  ['0xa6d0bd2e53216880182395e83f66ca581bb3ece53f154f54b2cc6b2403f66af7', 'Entrypoint'],
-  ['0x9f6de0f9c1333cecfafed4fd51ecf445d237a6295bd6ae88754821c8f8189789', 'Campaign'],
-  ['0x203728f46eb10d19f8f8081db849c86aa8f2a19341b7fd84d7a0e74f053f6242', 'Oracle Pro'],
-  ['0x5209a18e1ae6ac994dd5a188a2d8deb17b2bbab29f63a7b5457bdfe040f69f61', 'Alpha Lending']
+  ['0x3', 'Sui System'],
+  ['0x5', 'Sui Clock'],
+  // DEXes
+  ['0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb', 'Cetus AMM'],
+  ['0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267', 'Cetus Config'],
+  ['0x549e8b69270defbfafd4f94e17ec44cdbdd99820b33bda2278dea3b9a32d3f55', 'DeepBook v3'],
+  ['0xdee9', 'DeepBook'],
+  ['0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1', 'Turbos Finance'],
+  ['0x0c7ae833c220aa73a3643a0d508afa4ac5d50d97312bf5d5a4853f28d3d6f8e6', 'FlowX DEX'],
+  ['0xba153169476e8c3114962261d1edc70de5ad9781b83cc617ecc8c1923191cae0', 'Aftermath AMM'],
+  ['0x7f6ce7ade63857a09e3baeae84e2be26e7f6f7e7b8f7f7d4a4a7a4a7a4a7a4a', 'Kriya DEX'],
+  // Lending
+  ['0x5209a18e1ae6ac994dd5a188a2d8deb17b2bbab29f63a7b5457bdfe040f69f61', 'Alpha Lending'],
+  ['0xa02a98f9c88db51c6f149ba4b38b0c7959868669fdac2b4a7a44d2491dc601c2', 'Navi Protocol'],
+  ['0xd3ba59a41e97e3ae5aff5f02f24578596c3b62ca7a6e27cc0bd2e32e4a15e19c', 'Scallop Lending'],
+  // Oracles
+  ['0x4979543452f609ff272d504755966ff5e70122256101c17adbe8bd27d35116c3', 'Pyth Oracle'],
+  ['0x203728f46eb10d19f8f8081db849c86aa8f2a19341b7fd84d7a0e74f053f6242', 'Switchboard Oracle'],
+  // Infrastructure / indexers
+  ['0xcaf6ba059d539a97646d47f0b9ddf843e138d215e2a12ca1f4585d386f7aec3a', 'Cetus Pool'],
+  ['0xe8e485e9339ec1d42ac92350fd3708ba823ad6e813af459fa32c68562e413cda', 'DeepBook Engine'],
+  ['0x73949528d57ccc07dad6d0eb996bae9ac66cb5c2189f08072104b060190add3d', 'Aftermath Router'],
+  ['0xa6d0bd2e53216880182395e83f66ca581bb3ece53f154f54b2cc6b2403f66af7', 'Turbos Router'],
+  ['0x5ea2c97771334e4a64216d42e5ba68eb2a9792fe874c8d2bfdf8feb32ec7dc8b', 'Lotus Vault'],
+  ['0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809', 'Cetus LP Pool'],
+  ['0x9f6de0f9c1333cecfafed4fd51ecf445d237a6295bd6ae88754821c8f8189789', 'Airdrop Campaign'],
+  // NFT / Gaming
+  ['0x3ea8a6b24b8e24a6c23c7f9c9e9a9e9a9e9a9e9a9e9a9e9a9e9a9e9a9e9a9e9a', 'Mysten NFT'],
 ]);
 
 // Category detection from module / label text
@@ -644,12 +663,12 @@ function updateSummary(data, animate = true) {
   if (winEl) {
     const ncp = stats?.windowCheckpoints;
     const winStr = data.window || '—';
-    winEl.textContent = ncp ? `${winStr} · ${formatNumber(ncp)} checkpoints` : winStr;
+    winEl.textContent = ncp ? `${winStr} · ${formatNumber(ncp)} batches` : winStr;
   }
 
   // Contract / wallet badges
   const cMeta = $('#contractMeta'), wMeta = $('#walletMeta');
-  if (cMeta) cMeta.textContent = `${formatNumber(contracts.length)} protocols`;
+  if (cMeta) cMeta.textContent = `${formatNumber(contracts.length)} apps`;
   if (wMeta) wMeta.textContent = `${formatNumber(wallets.length)} wallets`;
 
   // Hero card 1: avg finality
@@ -731,7 +750,7 @@ function renderNetworkHealth(data) {
 
   container.innerHTML = `
     <div class="net-stat-item">
-      <span class="net-stat-label">Epoch</span>
+      <span class="net-stat-label">Day (epoch)</span>
       <span class="net-stat-value">${stats.epoch ?? '—'}</span>
     </div>
     <div class="net-stat-item">
@@ -739,7 +758,7 @@ function renderNetworkHealth(data) {
       <span class="net-stat-value">${stats.validatorCount || '—'}</span>
     </div>
     <div class="net-stat-item">
-      <span class="net-stat-label">Window</span>
+      <span class="net-stat-label">Data window</span>
       <span class="net-stat-value" style="font-size:1.1rem">${durStr}</span>
     </div>
     <div class="net-stat-item">
@@ -795,15 +814,11 @@ function renderCheckpoints(checkpoints) {
       </div>
       <div>
         <div class="row-title">${formatNumber(item.txCount ?? 0)}</div>
-        <div class="row-subtitle">txs</div>
-      </div>
-      <div>
-        <div class="row-title">${formatNumber(item.eventCount ?? 0)}</div>
-        <div class="row-subtitle">events</div>
+        <div class="row-subtitle">transactions</div>
       </div>
       <div>
         <div class="row-title ${finalityClass}">${finality}</div>
-        <div class="row-subtitle">finality</div>
+        <div class="row-subtitle">confirmation speed</div>
       </div>
     </div>`;
   };
