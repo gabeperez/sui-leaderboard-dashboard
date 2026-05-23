@@ -1,182 +1,182 @@
 {
   "source": "jun sqlite snapshot",
-  "updatedAt": "2026-05-23T12:06:28.758Z",
+  "updatedAt": "2026-05-23T14:00:17.977Z",
   "window": "~4 min",
   "checkpointRange": {
-    "latestCheckpoint": 278750440
+    "latestCheckpoint": 278779416
   },
   "networkStats": {
     "epoch": 1136,
     "validatorCount": 128,
-    "avgFinalityMs": 231,
-    "totalTx": 5794,
-    "uniqueWallets": 943,
-    "newWallets": 943,
-    "windowDurationSeconds": 235,
+    "avgFinalityMs": 226,
+    "totalTx": 5786,
+    "uniqueWallets": 953,
+    "newWallets": 953,
+    "windowDurationSeconds": 236,
     "windowCheckpoints": 1000
   },
   "checkpoints": [
     {
-      "checkpoint": 278750440,
-      "txCount": 1,
-      "eventCount": 2,
-      "finalitySeconds": 0.226,
-      "timestamp": "2026-05-23T12:06:17.998Z"
-    },
-    {
-      "checkpoint": 278750439,
-      "txCount": 2,
-      "eventCount": 7,
-      "finalitySeconds": 0.229,
-      "timestamp": "2026-05-23T12:06:17.772Z"
-    },
-    {
-      "checkpoint": 278750438,
-      "txCount": 4,
-      "eventCount": 2,
-      "finalitySeconds": 0.237,
-      "timestamp": "2026-05-23T12:06:17.543Z"
-    },
-    {
-      "checkpoint": 278750437,
-      "txCount": 2,
-      "eventCount": 4,
-      "finalitySeconds": 0.231,
-      "timestamp": "2026-05-23T12:06:17.306Z"
-    },
-    {
-      "checkpoint": 278750436,
-      "txCount": 6,
-      "eventCount": 69,
-      "finalitySeconds": 0.223,
-      "timestamp": "2026-05-23T12:06:17.075Z"
-    },
-    {
-      "checkpoint": 278750435,
+      "checkpoint": 278779416,
       "txCount": 7,
-      "eventCount": 12,
-      "finalitySeconds": 0.237,
-      "timestamp": "2026-05-23T12:06:16.852Z"
+      "eventCount": 13,
+      "finalitySeconds": 0.264,
+      "timestamp": "2026-05-23T14:00:07.371Z"
     },
     {
-      "checkpoint": 278750434,
-      "txCount": 9,
-      "eventCount": 18,
+      "checkpoint": 278779415,
+      "txCount": 2,
+      "eventCount": 2,
+      "finalitySeconds": 0.247,
+      "timestamp": "2026-05-23T14:00:07.107Z"
+    },
+    {
+      "checkpoint": 278779414,
+      "txCount": 13,
+      "eventCount": 130,
+      "finalitySeconds": 0.224,
+      "timestamp": "2026-05-23T14:00:06.860Z"
+    },
+    {
+      "checkpoint": 278779413,
+      "txCount": 2,
+      "eventCount": 9,
+      "finalitySeconds": 0.214,
+      "timestamp": "2026-05-23T14:00:06.636Z"
+    },
+    {
+      "checkpoint": 278779412,
+      "txCount": 2,
+      "eventCount": 22,
       "finalitySeconds": 0.227,
-      "timestamp": "2026-05-23T12:06:16.615Z"
+      "timestamp": "2026-05-23T14:00:06.422Z"
     },
     {
-      "checkpoint": 278750433,
-      "txCount": 5,
-      "eventCount": 4,
-      "finalitySeconds": 0.238,
-      "timestamp": "2026-05-23T12:06:16.388Z"
+      "checkpoint": 278779411,
+      "txCount": 4,
+      "eventCount": 18,
+      "finalitySeconds": 0.228,
+      "timestamp": "2026-05-23T14:00:06.195Z"
     },
     {
-      "checkpoint": 278750432,
-      "txCount": 5,
-      "eventCount": 6,
-      "finalitySeconds": 0.22,
-      "timestamp": "2026-05-23T12:06:16.150Z"
+      "checkpoint": 278779410,
+      "txCount": 4,
+      "eventCount": 14,
+      "finalitySeconds": 0.244,
+      "timestamp": "2026-05-23T14:00:05.967Z"
     },
     {
-      "checkpoint": 278750431,
+      "checkpoint": 278779409,
+      "txCount": 3,
+      "eventCount": 40,
+      "finalitySeconds": 0.236,
+      "timestamp": "2026-05-23T14:00:05.723Z"
+    },
+    {
+      "checkpoint": 278779408,
+      "txCount": 7,
+      "eventCount": 68,
+      "finalitySeconds": 0.217,
+      "timestamp": "2026-05-23T14:00:05.487Z"
+    },
+    {
+      "checkpoint": 278779407,
+      "txCount": 8,
+      "eventCount": 7,
+      "finalitySeconds": 0.228,
+      "timestamp": "2026-05-23T14:00:05.270Z"
+    },
+    {
+      "checkpoint": 278779406,
+      "txCount": 4,
+      "eventCount": 97,
+      "finalitySeconds": 0.227,
+      "timestamp": "2026-05-23T14:00:05.042Z"
+    },
+    {
+      "checkpoint": 278779405,
       "txCount": 8,
       "eventCount": 9,
-      "finalitySeconds": 0.228,
-      "timestamp": "2026-05-23T12:06:15.930Z"
+      "finalitySeconds": 0.245,
+      "timestamp": "2026-05-23T14:00:04.815Z"
     },
     {
-      "checkpoint": 278750430,
-      "txCount": 3,
-      "eventCount": 33,
-      "finalitySeconds": 0.24,
-      "timestamp": "2026-05-23T12:06:15.702Z"
-    },
-    {
-      "checkpoint": 278750429,
+      "checkpoint": 278779404,
       "txCount": 1,
       "eventCount": 0,
-      "finalitySeconds": 0.227,
-      "timestamp": "2026-05-23T12:06:15.462Z"
+      "finalitySeconds": 0.212,
+      "timestamp": "2026-05-23T14:00:04.570Z"
     },
     {
-      "checkpoint": 278750428,
-      "txCount": 6,
-      "eventCount": 70,
-      "finalitySeconds": 0.231,
-      "timestamp": "2026-05-23T12:06:15.235Z"
-    },
-    {
-      "checkpoint": 278750427,
-      "txCount": 13,
-      "eventCount": 29,
-      "finalitySeconds": 0.233,
-      "timestamp": "2026-05-23T12:06:15.004Z"
-    },
-    {
-      "checkpoint": 278750426,
-      "txCount": 2,
-      "eventCount": 3,
-      "finalitySeconds": 0.221,
-      "timestamp": "2026-05-23T12:06:14.771Z"
-    },
-    {
-      "checkpoint": 278750425,
-      "txCount": 6,
-      "eventCount": 17,
-      "finalitySeconds": 0.236,
-      "timestamp": "2026-05-23T12:06:14.550Z"
-    },
-    {
-      "checkpoint": 278750424,
+      "checkpoint": 278779403,
       "txCount": 4,
-      "eventCount": 4,
-      "finalitySeconds": 0.227,
-      "timestamp": "2026-05-23T12:06:14.314Z"
+      "eventCount": 63,
+      "finalitySeconds": 0.214,
+      "timestamp": "2026-05-23T14:00:04.358Z"
     },
     {
-      "checkpoint": 278750423,
+      "checkpoint": 278779402,
+      "txCount": 12,
+      "eventCount": 26,
+      "finalitySeconds": 0.224,
+      "timestamp": "2026-05-23T14:00:04.144Z"
+    },
+    {
+      "checkpoint": 278779401,
       "txCount": 5,
-      "eventCount": 70,
-      "finalitySeconds": 0.241,
-      "timestamp": "2026-05-23T12:06:14.087Z"
+      "eventCount": 212,
+      "finalitySeconds": 0.2,
+      "timestamp": "2026-05-23T14:00:03.920Z"
     },
     {
-      "checkpoint": 278750422,
-      "txCount": 6,
-      "eventCount": 36,
-      "finalitySeconds": 0.233,
-      "timestamp": "2026-05-23T12:06:13.846Z"
-    },
-    {
-      "checkpoint": 278750421,
+      "checkpoint": 278779400,
       "txCount": 2,
-      "eventCount": 2,
+      "eventCount": 62,
+      "finalitySeconds": 0.219,
+      "timestamp": "2026-05-23T14:00:03.720Z"
+    },
+    {
+      "checkpoint": 278779399,
+      "txCount": 10,
+      "eventCount": 17,
+      "finalitySeconds": 0.208,
+      "timestamp": "2026-05-23T14:00:03.501Z"
+    },
+    {
+      "checkpoint": 278779398,
+      "txCount": 9,
+      "eventCount": 66,
+      "finalitySeconds": 0.218,
+      "timestamp": "2026-05-23T14:00:03.293Z"
+    },
+    {
+      "checkpoint": 278779397,
+      "txCount": 16,
+      "eventCount": 62,
       "finalitySeconds": null,
-      "timestamp": "2026-05-23T12:06:13.613Z"
+      "timestamp": "2026-05-23T14:00:03.075Z"
     }
   ],
   "topContracts": [
     {
       "label": "0x5ea2c97771334e4a64216d42e5ba68eb2a9792fe874c8d2bfdf8feb32ec7dc8b::lotus_db_vault",
-      "activity": 11072,
+      "activity": 10998,
       "wallets": 1
     },
     {
       "label": "0xec939e9e10539ff5e72b0cdd94d26b36564fce6c76a3ade483e142430136bd0a::lotus_db_vault",
-      "activity": 4466,
+      "activity": 5289,
       "wallets": 1
     },
     {
       "label": "0x346bb9d384d96735c6f0262aa11012349d66e2247698c08faa5d132b08a495f6::h0d1a7",
-      "activity": 1915,
+      "activity": 1949,
       "wallets": 3
     },
     {
       "label": "0xcaf6ba059d539a97646d47f0b9ddf843e138d215e2a12ca1f4585d386f7aec3a::pool",
-      "activity": 1574,
-      "wallets": 3
+      "activity": 1545,
+      "wallets": 9
     },
     {
       "label": "0x4979543452f609ff272d504755966ff5e70122256101c17adbe8bd27d35116c3::price_data_pull_v2",
@@ -185,80 +185,80 @@
     },
     {
       "label": "0xb29d83c26cdd2a64959263abbcfc4a6937f0c9fccaf98580ca56faded65be244::pool",
-      "activity": 989,
+      "activity": 892,
       "wallets": 3
     },
     {
-      "label": "0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91::pyth",
-      "activity": 832,
-      "wallets": 15
-    },
-    {
-      "label": "0x9f6de0f9c1333cecfafed4fd51ecf445d237a6295bd6ae88754821c8f8189789::campaign",
-      "activity": 582,
-      "wallets": 582
-    },
-    {
       "label": "0xf48222c4e057fa468baf136bff8e12504209d43850c5778f76159292a96f621e::pool",
-      "activity": 550,
+      "activity": 805,
       "wallets": 4
     },
     {
-      "label": "0xb630ab1b5cea8e13f57530d91ac41f73fe7246d95785f3629e911be8b1cff1d9::price_oracle",
-      "activity": 462,
+      "label": "0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91::pyth",
+      "activity": 766,
+      "wallets": 14
+    },
+    {
+      "label": "0x9f6de0f9c1333cecfafed4fd51ecf445d237a6295bd6ae88754821c8f8189789::campaign",
+      "activity": 540,
+      "wallets": 540
+    },
+    {
+      "label": "0xa6d0bd2e53216880182395e83f66ca581bb3ece53f154f54b2cc6b2403f66af7::entrypoint",
+      "activity": 538,
       "wallets": 1
     }
   ],
   "activeWallets": [
     {
       "label": "0xffd4f043057226453aeba59732d41c6093516f54823ebc3a16d17f8a77d2f0ad",
-      "actions": 957,
-      "lastSeen": "2026-05-23T12:06:17.772Z"
-    },
-    {
-      "label": "0xcde6dbe01902be1f200ff03dbbd149e586847be8cee15235f82750d9b06c0e04",
-      "actions": 736,
-      "lastSeen": "2026-05-23T12:06:12.219Z"
+      "actions": 942,
+      "lastSeen": "2026-05-23T14:00:06.860Z"
     },
     {
       "label": "0x1a66b986f6e938c9f6d4cf7b98c97c331165cad5759e13fbbb1dee01728841dd",
-      "actions": 530,
-      "lastSeen": "2026-05-23T12:06:11.753Z"
+      "actions": 483,
+      "lastSeen": "2026-05-23T14:00:03.501Z"
+    },
+    {
+      "label": "0xcde6dbe01902be1f200ff03dbbd149e586847be8cee15235f82750d9b06c0e04",
+      "actions": 475,
+      "lastSeen": "2026-05-23T14:00:03.293Z"
     },
     {
       "label": "0xa7580096839771ce6c05671f4a770e227877748b6af2f955177775538f708713",
-      "actions": 327,
-      "lastSeen": "2026-05-23T12:06:17.075Z"
-    },
-    {
-      "label": "0x02a212de6a9dfa3a69e22387acfbafbb1a9e591bd9d636e7895dcfc8de05f331",
-      "actions": 258,
-      "lastSeen": "2026-05-23T12:06:15.235Z"
-    },
-    {
-      "label": "0x9df9ed63122824b2c77e52370bd2b9897df44f98c780f355702945f8aa923285",
-      "actions": 231,
-      "lastSeen": "2026-05-23T12:06:17.998Z"
+      "actions": 348,
+      "lastSeen": "2026-05-23T14:00:06.860Z"
     },
     {
       "label": "0x0feb54a725aa357ff2f5bc6bb023c05b310285bd861275a30521f339a434ebb3",
-      "actions": 229,
-      "lastSeen": "2026-05-23T12:06:17.306Z"
+      "actions": 345,
+      "lastSeen": "2026-05-23T14:00:05.270Z"
     },
     {
       "label": "0xd265672730b0540ffd3569530682a0f02ef984b703457790554eb0e19329663a",
-      "actions": 202,
-      "lastSeen": "2026-05-23T12:06:17.543Z"
+      "actions": 308,
+      "lastSeen": "2026-05-23T14:00:07.107Z"
     },
     {
-      "label": "0x42960e77d87a60d0a0599757beb320147510933c5e63a6ccfec3fdd54aa796fc",
-      "actions": 110,
-      "lastSeen": "2026-05-23T12:06:14.087Z"
+      "label": "0x9df9ed63122824b2c77e52370bd2b9897df44f98c780f355702945f8aa923285",
+      "actions": 230,
+      "lastSeen": "2026-05-23T14:00:07.107Z"
+    },
+    {
+      "label": "0x02a212de6a9dfa3a69e22387acfbafbb1a9e591bd9d636e7895dcfc8de05f331",
+      "actions": 217,
+      "lastSeen": "2026-05-23T14:00:05.270Z"
     },
     {
       "label": "0xa0766ff7b0325c18e4c7416ad4ea4d01e92f09147b8c5e7e4a582dc84ca3a874",
-      "actions": 101,
-      "lastSeen": "2026-05-23T12:06:13.147Z"
+      "actions": 144,
+      "lastSeen": "2026-05-23T14:00:03.293Z"
+    },
+    {
+      "label": "0x42960e77d87a60d0a0599757beb320147510933c5e63a6ccfec3fdd54aa796fc",
+      "actions": 111,
+      "lastSeen": "2026-05-23T14:00:06.860Z"
     }
   ]
 }
